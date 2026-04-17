@@ -2,61 +2,221 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Gemini Akinator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Mystic Node</title>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f4f4f9; }
-        #game-box { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; }
-        .btn { padding: 10px 25px; margin: 10px; cursor: pointer; border: none; border-radius: 5px; font-size: 16px; }
-        .yes { background: #4CAF50; color: white; }
-        .no { background: #f44336; color: white; }
+        :root {
+            --bg-color: #0d0d12;
+            --card-bg: #1a1a24;
+            --neon-green: #39ff14;
+            --neon-red: #ff073a;
+            --text-color: #e0e0e0;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Floating Cartoon Characters */
+        .cartoon {
+            position: absolute;
+            font-size: 80px;
+            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.2));
+            animation: float 6s ease-in-out infinite;
+            z-index: 0;
+        }
+        .wizard { top: 15%; left: 10%; animation-delay: 0s; }
+        .robot { bottom: 15%; right: 10%; animation-delay: 3s; font-size: 90px; }
+
+        @keyframes float {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(5deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
+        }
+
+        /* Main Game Card */
+        #game-box {
+            background-color: var(--card-bg);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), 0 0 15px rgba(100, 100, 255, 0.1) inset;
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+            z-index: 10;
+            border: 1px solid #2a2a35;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
+        /* Neon Buttons */
+        .btn {
+            padding: 15px 35px;
+            margin: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: scale(0.95);
+        }
+
+        .yes {
+            background: transparent;
+            color: var(--neon-green);
+            border: 2px solid var(--neon-green);
+            box-shadow: 0 0 10px rgba(57, 255, 20, 0.2);
+        }
+
+        .yes:hover:not(:disabled) {
+            background: var(--neon-green);
+            color: #000;
+            box-shadow: 0 0 20px var(--neon-green);
+        }
+
+        .no {
+            background: transparent;
+            color: var(--neon-red);
+            border: 2px solid var(--neon-red);
+            box-shadow: 0 0 10px rgba(255, 7, 58, 0.2);
+        }
+
+        .no:hover:not(:disabled) {
+            background: var(--neon-red);
+            color: #000;
+            box-shadow: 0 0 20px var(--neon-red);
+        }
+
+        /* Pulse animation for thinking */
+        .thinking {
+            animation: pulse 1.5s infinite;
+            color: #aaa;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
+
+    <div class="cartoon wizard">🧙‍♂️</div>
+    <div class="cartoon robot">🤖</div>
+
     <div id="game-box">
-        <h1 id="question">Thinking of a question...</h1>
-        <div id="controls">
-            <button class="btn yes" onclick="sendMove('Yes')">Yes</button>
-            <button class="btn no" onclick="sendMove('No')">No</button>
+        <h1 id="question" class="thinking">Awakening the Mystic Node...</h1>
+        <div id="controls" style="display: none;">
+            <button id="btn-yes" class="btn yes" onclick="sendMove('Yes')">YES</button>
+            <button id="btn-no" class="btn no" onclick="sendMove('No')">NO</button>
+        </div>
+        <div id="result-controls" style="display: none;">
+            <button class="btn yes" onclick="location.reload()">I WON! (Reset)</button>
+            <button class="btn no" onclick="learn()">YOU FAILED.</button>
         </div>
     </div>
 
     <script>
         let history = [];
+        let currentGuess = "";
         
-        async function sendMove(input) {
-            const res = await fetch('/api/chat', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ history, userInput: input })
-            });
-            const data = await res.json();
-            
-            if(data.isGuess) {
-                document.getElementById('question').innerText = `Is it ${data.finalAnswer}?`;
-                document.getElementById('controls').innerHTML = `
-                    <button class="btn yes" onclick="location.reload()">Yes! (Reset)</button>
-                    <button class="btn no" onclick="learn('${data.finalAnswer}')">No, you lost.</button>
-                `;
+        const questionEl = document.getElementById('question');
+        const controls = document.getElementById('controls');
+        const resultControls = document.getElementById('result-controls');
+        const btnYes = document.getElementById('btn-yes');
+        const btnNo = document.getElementById('btn-no');
+
+        function setLoading(isLoading) {
+            if (isLoading) {
+                questionEl.classList.add('thinking');
+                btnYes.disabled = true;
+                btnNo.disabled = true;
             } else {
-                document.getElementById('question').innerText = data.question;
-                history.push({ role: "user", text: input });
-                history.push({ role: "model", text: JSON.stringify(data) });
+                questionEl.classList.remove('thinking');
+                btnYes.disabled = false;
+                btnNo.disabled = false;
+                controls.style.display = 'block';
             }
         }
 
-        async function learn(wrongGuess) {
-            const correctThing = prompt("What were you thinking of?");
+        async function sendMove(input) {
+            setLoading(true);
+            
+            // On first load, input is 'Start', otherwise it's Yes/No
+            if (input !== 'Start') {
+                history.push({ role: "user", text: input });
+            }
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ history, userInput: input === 'Start' ? "Let's start" : input })
+                });
+                const data = await res.json();
+                
+                if (data.isGuess) {
+                    currentGuess = data.finalAnswer;
+                    questionEl.innerText = `Are you thinking of... ${data.finalAnswer}?`;
+                    controls.style.display = 'none';
+                    resultControls.style.display = 'block';
+                    questionEl.classList.remove('thinking');
+                } else {
+                    questionEl.innerText = data.question;
+                    history.push({ role: "model", text: JSON.stringify(data) });
+                    setLoading(false);
+                }
+            } catch (error) {
+                questionEl.innerText = "Connection lost to the Mystic Node. Try again.";
+                setLoading(false);
+            }
+        }
+
+        async function learn() {
+            const correctThing = prompt("You defeated me! What were you thinking of?");
+            if (!correctThing) return;
+
+            questionEl.innerText = "Analyzing my mistakes...";
+            questionEl.classList.add('thinking');
+            resultControls.style.display = 'none';
+
             await fetch('/api/chat', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ history, isCorrection: true, correctThing })
             });
-            alert("I won't forget that! Restarting...");
+            
+            alert("Knowledge absorbed. I am smarter now.");
             location.reload();
         }
 
-        // Start game
-        sendMove("Let's start the game.");
+        // Start game automatically on load
+        window.onload = () => sendMove('Start');
     </script>
 </body>
 </html>
