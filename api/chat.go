@@ -61,7 +61,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer client.Close()
 
-	model := client.GenerativeModel("gemini-1.5-flash")
+	model := client.GenerativeModel("gemini-2.5-flash")
 	model.SystemInstruction = &genai.Content{
 		Parts: []genai.Part{
 			genai.Text(`You are 'The Mystic Node', an all-knowing entity. You can guess any character, object, animal, or concept.
