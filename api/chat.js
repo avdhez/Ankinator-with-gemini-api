@@ -14,7 +14,6 @@ module.exports = async function handler(req, res) {
     try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         
-        // THE FIX: The official, stable model name. No experimental tags.
         const model = genAI.getGenerativeModel({ 
             model: "gemini-1.5-flash",
             systemInstruction: `
@@ -41,21 +40,12 @@ module.exports = async function handler(req, res) {
         const result = await chat.sendMessage(userInput || "Let's start!");
         let responseText = result.response.text();
         
+        // Clean markdown formatting if Gemini adds it
         responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         res.status(200).json(JSON.parse(responseText));
 
     } catch (error) {
         console.error("API Crash Details:", error);
-        // Removing the custom message to see the RAW Google error
-        res.status(200).json({ 
-            question: `RAW SERVER ERROR: ${error.message}`, 
-            isGuess: false 
-        });
-    }
-};
-        
-        
-
         res.status(200).json({ 
             question: `SERVER ERROR: ${error.message}`, 
             isGuess: false 
