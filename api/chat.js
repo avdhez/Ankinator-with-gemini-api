@@ -1,9 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 module.exports = async function handler(req, res) {
-    // 1. Check API Key
     if (!process.env.GEMINI_API_KEY) {
-        console.error("CRITICAL ERROR: GEMINI_API_KEY is missing.");
         return res.status(500).json({ 
             error: "API Key missing!",
             question: "SYSTEM ERROR: Missing API Key.", 
@@ -16,9 +14,9 @@ module.exports = async function handler(req, res) {
     try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         
-        // THE FINAL FIX: Using the explicit, universally available 8B model
+        // THE FIX: The official, stable model name. No experimental tags.
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash-8b",
+            model: "gemini-1.5-flash",
             systemInstruction: `
                 You are 'The Mystic Node', an all-knowing entity. You can guess any character, object, animal, or concept in existence.
                 Rules:
@@ -32,7 +30,6 @@ module.exports = async function handler(req, res) {
         const { history, userInput, isCorrection, correctThing } = req.body;
         const safeHistory = history ? history.map(h => ({ role: h.role, parts: [{ text: h.text }] })) : [];
 
-        // If the user is teaching the bot after a wrong guess
         if (isCorrection) {
             const learningPrompt = `I was thinking of "${correctThing}". Review our history: ${JSON.stringify(safeHistory)}. Learn from this mistake. Reply with strict JSON: {"question": "Got it! I will remember that. Let's play again!"}`;
             await model.generateContent(learningPrompt);
@@ -44,13 +41,20 @@ module.exports = async function handler(req, res) {
         const result = await chat.sendMessage(userInput || "Let's start!");
         let responseText = result.response.text();
         
-        // Clean the response from potential markdown formatting
         responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-        
         res.status(200).json(JSON.parse(responseText));
 
     } catch (error) {
         console.error("API Crash Details:", error);
+        
+        // Custom error handler to catch API Key Dashboard issues
+        if (error.message.includes("404") || error.message.includes("not found")) {
+            return res.status(200).json({ 
+                question: "ERROR: API Key mismatch! Did you get your key from Google Cloud? You MUST get it from aistudio.google.com", 
+                isGuess: false 
+            });
+        }
+
         res.status(200).json({ 
             question: `SERVER ERROR: ${error.message}`, 
             isGuess: false 
