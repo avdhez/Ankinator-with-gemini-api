@@ -46,14 +46,15 @@ module.exports = async function handler(req, res) {
 
     } catch (error) {
         console.error("API Crash Details:", error);
+        // Removing the custom message to see the RAW Google error
+        res.status(200).json({ 
+            question: `RAW SERVER ERROR: ${error.message}`, 
+            isGuess: false 
+        });
+    }
+};
         
-        // Custom error handler to catch API Key Dashboard issues
-        if (error.message.includes("404") || error.message.includes("not found")) {
-            return res.status(200).json({ 
-                question: "ERROR: API Key mismatch! Did you get your key from Google Cloud? You MUST get it from aistudio.google.com", 
-                isGuess: false 
-            });
-        }
+        
 
         res.status(200).json({ 
             question: `SERVER ERROR: ${error.message}`, 
