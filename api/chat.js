@@ -9,31 +9,35 @@ export default async function handler(req, res) {
     const model = genAI.getGenerativeModel({ model_name: "gemini-1.5-flash" });
 
     let systemInstruction = `
-        You are an advanced Akinator. You can guess characters, objects, or concepts.
+        You are 'The Mystic Node', an all-knowing entity. You can guess any character, object, animal, or concept in existence.
         Rules:
-        1. Ask YES/NO questions only.
-        2. Respond ONLY in JSON: {"question": "string", "isGuess": boolean, "finalAnswer": "string"}.
-        3. If isGuess is true, 'finalAnswer' is your guess.
-        4. If you lose, I will tell you the correct answer. Use that to improve your logic next time.
+        1. Ask ONE YES/NO question at a time.
+        2. Respond ONLY in strict JSON format: {"question": "Your question here", "isGuess": false, "finalAnswer": ""}
+        3. If you are 90% sure, set 'isGuess' to true, and put your guess in 'finalAnswer'.
+        4. Do not include markdown tags in your response.
     `;
 
-    // If the user is teaching the bot after a wrong guess
     if (isCorrection) {
-        const learningPrompt = `I was thinking of "${correctThing}". Review these questions we just played: ${JSON.stringify(history)}. Briefly acknowledge and reset.`;
-        const result = await model.generateContent([systemInstruction, learningPrompt]);
-        return res.json({ reset: true, message: "I've learned from that! Let's play again." });
+        const learningPrompt = `I was thinking of "${correctThing}". Review our history: ${JSON.stringify(history)}. Learn from this mistake for the future. Reply with strict JSON: {"question": "Got it! I will remember that. Let's play again!"}`;
+        await model.generateContent([systemInstruction, learningPrompt]);
+        return res.json({ reset: true });
     }
 
     const chat = model.start_chat({
-        history: history.map(h => ({ role: h.role, parts: [{ text: h.text }] })),
-        generationConfig: { response_mime_type: "application/json" }
+        history: history.map(h => ({ role: h.role, parts: [{ text: h.text }] }))
     });
 
     try {
         const result = await chat.sendMessage(userInput || "Let's start!");
-        const responseText = result.response.text();
+        let responseText = result.response.text();
+        
+        // CRITICAL FIX: Strip markdown formatting if Gemini adds it
+        responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        
         res.status(200).json(JSON.parse(responseText));
     } catch (error) {
-        res.status(500).json({ error: "Failed to parse Gemini response" });
+        console.error("API Error:", error);
+        // Fallback response so the app doesn't freeze
+        res.status(200).json({ question: "My mind is cloudy. Say 'Yes' to try asking again.", isGuess: false });
     }
 }
