@@ -26,53 +26,54 @@
             position: relative;
         }
 
-        /* Floating Cartoon Characters */
+        /* Smaller Floating Characters */
         .cartoon {
             position: absolute;
-            font-size: 80px;
-            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.2));
+            font-size: 45px; /* Shrunk from 80px */
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.2));
             animation: float 6s ease-in-out infinite;
             z-index: 0;
         }
-        .wizard { top: 15%; left: 10%; animation-delay: 0s; }
-        .robot { bottom: 15%; right: 10%; animation-delay: 3s; font-size: 90px; }
+        .wizard { top: 20%; left: 15%; animation-delay: 0s; }
+        .robot { bottom: 20%; right: 15%; animation-delay: 3s; font-size: 50px; }
 
         @keyframes float {
             0% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(5deg); }
+            50% { transform: translateY(-15px) rotate(5deg); }
             100% { transform: translateY(0px) rotate(0deg); }
         }
 
-        /* Main Game Card */
+        /* Compact Game Card */
         #game-box {
             background-color: var(--card-bg);
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), 0 0 15px rgba(100, 100, 255, 0.1) inset;
+            padding: 25px; /* Shrunk from 40px */
+            border-radius: 16px;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.8), 0 0 10px rgba(100, 100, 255, 0.1) inset;
             text-align: center;
-            max-width: 500px;
-            width: 90%;
+            max-width: 320px; /* Shrunk from 500px */
+            width: 85%;
             z-index: 10;
             border: 1px solid #2a2a35;
         }
 
         h1 {
-            font-size: 1.5rem;
-            min-height: 80px;
+            font-size: 1.1rem; /* Shrunk from 1.5rem */
+            min-height: 60px; /* Shrunk from 80px */
             display: flex;
             align-items: center;
             justify-content: center;
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+            text-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+            margin-top: 0;
         }
 
-        /* Neon Buttons */
+        /* Compact Neon Buttons */
         .btn {
-            padding: 15px 35px;
-            margin: 15px;
-            font-size: 18px;
+            padding: 10px 20px; /* Shrunk from 15px 35px */
+            margin: 8px;
+            font-size: 14px; /* Shrunk from 18px */
             font-weight: bold;
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             cursor: pointer;
             transition: all 0.3s ease;
             text-transform: uppercase;
@@ -89,26 +90,26 @@
             background: transparent;
             color: var(--neon-green);
             border: 2px solid var(--neon-green);
-            box-shadow: 0 0 10px rgba(57, 255, 20, 0.2);
+            box-shadow: 0 0 8px rgba(57, 255, 20, 0.2);
         }
 
         .yes:hover:not(:disabled) {
             background: var(--neon-green);
             color: #000;
-            box-shadow: 0 0 20px var(--neon-green);
+            box-shadow: 0 0 15px var(--neon-green);
         }
 
         .no {
             background: transparent;
             color: var(--neon-red);
             border: 2px solid var(--neon-red);
-            box-shadow: 0 0 10px rgba(255, 7, 58, 0.2);
+            box-shadow: 0 0 8px rgba(255, 7, 58, 0.2);
         }
 
         .no:hover:not(:disabled) {
             background: var(--neon-red);
             color: #000;
-            box-shadow: 0 0 20px var(--neon-red);
+            box-shadow: 0 0 15px var(--neon-red);
         }
 
         /* Pulse animation for thinking */
@@ -130,14 +131,14 @@
     <div class="cartoon robot">🤖</div>
 
     <div id="game-box">
-        <h1 id="question" class="thinking">Awakening the Mystic Node...</h1>
+        <h1 id="question" class="thinking">Awakening...</h1>
         <div id="controls" style="display: none;">
             <button id="btn-yes" class="btn yes" onclick="sendMove('Yes')">YES</button>
             <button id="btn-no" class="btn no" onclick="sendMove('No')">NO</button>
         </div>
         <div id="result-controls" style="display: none;">
-            <button class="btn yes" onclick="location.reload()">I WON! (Reset)</button>
-            <button class="btn no" onclick="learn()">YOU FAILED.</button>
+            <button class="btn yes" onclick="location.reload()">I WON!</button>
+            <button class="btn no" onclick="learn()">FAILED.</button>
         </div>
     </div>
 
@@ -167,7 +168,6 @@
         async function sendMove(input) {
             setLoading(true);
             
-            // On first load, input is 'Start', otherwise it's Yes/No
             if (input !== 'Start') {
                 history.push({ role: "user", text: input });
             }
@@ -178,11 +178,15 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ history, userInput: input === 'Start' ? "Let's start" : input })
                 });
+                
+                // If the response is not ok (e.g. 500 error from Vercel), throw an error to catch block
+                if (!res.ok) throw new Error("Server error");
+                
                 const data = await res.json();
                 
                 if (data.isGuess) {
                     currentGuess = data.finalAnswer;
-                    questionEl.innerText = `Are you thinking of... ${data.finalAnswer}?`;
+                    questionEl.innerText = `Is it ${data.finalAnswer}?`;
                     controls.style.display = 'none';
                     resultControls.style.display = 'block';
                     questionEl.classList.remove('thinking');
@@ -192,26 +196,31 @@
                     setLoading(false);
                 }
             } catch (error) {
+                // If this triggers, your backend is not running or the API key is broken
+                console.error(error);
                 questionEl.innerText = "Connection lost to the Mystic Node. Try again.";
                 setLoading(false);
             }
         }
 
         async function learn() {
-            const correctThing = prompt("You defeated me! What were you thinking of?");
+            const correctThing = prompt("You defeated me! What was it?");
             if (!correctThing) return;
 
-            questionEl.innerText = "Analyzing my mistakes...";
+            questionEl.innerText = "Analyzing...";
             questionEl.classList.add('thinking');
             resultControls.style.display = 'none';
 
-            await fetch('/api/chat', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ history, isCorrection: true, correctThing })
-            });
-            
-            alert("Knowledge absorbed. I am smarter now.");
+            try {
+                await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ history, isCorrection: true, correctThing })
+                });
+                alert("Knowledge absorbed. I am smarter now.");
+            } catch (err) {
+                alert("Failed to save memory.");
+            }
             location.reload();
         }
 
