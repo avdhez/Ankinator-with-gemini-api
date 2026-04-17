@@ -1,11 +1,11 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 module.exports = async function handler(req, res) {
-    // 1. Check if the API key even exists
+    // 1. Check API Key
     if (!process.env.GEMINI_API_KEY) {
-        console.error("CRITICAL ERROR: GEMINI_API_KEY is missing in Vercel.");
+        console.error("CRITICAL ERROR: GEMINI_API_KEY is missing.");
         return res.status(500).json({ 
-            error: "API Key missing! Check Vercel Environment Variables.",
+            error: "API Key missing!",
             question: "SYSTEM ERROR: Missing API Key.", 
             isGuess: false 
         });
@@ -15,7 +15,9 @@ module.exports = async function handler(req, res) {
 
     try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ model_name: "gemini-1.5-flash" });
+        
+        // THE FIX IS HERE: changed 'model_name' to just 'model'
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
         const { history, userInput, isCorrection, correctThing } = req.body;
         const safeHistory = history ? history.map(h => ({ role: h.role, parts: [{ text: h.text }] })) : [];
@@ -27,6 +29,7 @@ module.exports = async function handler(req, res) {
             Do not include markdown tags.
         `;
 
+        // If the user is teaching the bot after a wrong guess
         if (isCorrection) {
             const learningPrompt = `I was thinking of "${correctThing}". Review our history: ${JSON.stringify(safeHistory)}. Learn from this mistake. Reply with strict JSON: {"question": "Got it! I will remember that. Let's play again!"}`;
             await model.generateContent([systemInstruction, learningPrompt]);
@@ -37,13 +40,13 @@ module.exports = async function handler(req, res) {
         const result = await chat.sendMessage(userInput || "Let's start!");
         let responseText = result.response.text();
         
+        // Clean the response
         responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         
         res.status(200).json(JSON.parse(responseText));
 
     } catch (error) {
         console.error("API Crash Details:", error);
-        // Send the exact error back to the screen
         res.status(200).json({ 
             question: `SERVER ERROR: ${error.message.substring(0, 50)}...`, 
             isGuess: false 
