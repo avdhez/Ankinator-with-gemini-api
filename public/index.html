@@ -10,29 +10,22 @@
             --card-bg: #1a1a24;
             --neon-green: #39ff14;
             --neon-red: #ff073a;
+            --neon-yellow: #ffeb3b;
+            --neon-purple: #b026ff;
             --text-color: #e0e0e0;
         }
 
         body {
-            margin: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            overflow: hidden;
-            position: relative;
+            margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color); color: var(--text-color);
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden; position: relative;
         }
 
-        /* Floating Characters */
         .cartoon {
-            position: absolute;
-            font-size: 45px;
+            position: absolute; font-size: 45px;
             filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.2));
-            animation: float 6s ease-in-out infinite;
-            z-index: 0;
+            animation: float 6s ease-in-out infinite; z-index: 0;
         }
         .wizard { top: 20%; left: 15%; animation-delay: 0s; }
         .robot { bottom: 20%; right: 15%; animation-delay: 3s; font-size: 50px; }
@@ -43,86 +36,40 @@
             100% { transform: translateY(0px) rotate(0deg); }
         }
 
-        /* Game Card */
         #game-box {
-            background-color: var(--card-bg);
-            padding: 25px;
-            border-radius: 16px;
+            background-color: var(--card-bg); padding: 25px; border-radius: 16px;
             box-shadow: 0 0 25px rgba(0, 0, 0, 0.8), 0 0 10px rgba(100, 100, 255, 0.1) inset;
-            text-align: center;
-            max-width: 320px;
-            width: 85%;
-            z-index: 10;
-            border: 1px solid #2a2a35;
+            text-align: center; max-width: 350px; width: 85%; z-index: 10; border: 1px solid #2a2a35;
         }
 
-        h1 {
-            font-size: 1.1rem;
-            min-height: 60px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
-            margin-top: 0;
-        }
+        h1 { font-size: 1.1rem; min-height: 60px; display: flex; align-items: center; justify-content: center; margin-top: 0; }
 
-        /* Neon Buttons */
+        /* Button Grid Layout */
+        #controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+
         .btn {
-            padding: 10px 20px;
-            margin: 8px;
-            font-size: 14px;
-            font-weight: bold;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            padding: 10px 15px; font-size: 13px; font-weight: bold; border: none;
+            border-radius: 6px; cursor: pointer; transition: all 0.3s ease;
+            text-transform: uppercase; letter-spacing: 1px; flex: 1 1 40%;
         }
 
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: scale(0.95);
-        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: scale(0.95); }
 
-        .yes {
-            background: transparent;
-            color: var(--neon-green);
-            border: 2px solid var(--neon-green);
-            box-shadow: 0 0 8px rgba(57, 255, 20, 0.2);
-        }
+        /* Colors */
+        .yes { background: transparent; color: var(--neon-green); border: 2px solid var(--neon-green); }
+        .yes:hover:not(:disabled) { background: var(--neon-green); color: #000; box-shadow: 0 0 15px var(--neon-green); }
 
-        .yes:hover:not(:disabled) {
-            background: var(--neon-green);
-            color: #000;
-            box-shadow: 0 0 15px var(--neon-green);
-        }
+        .no { background: transparent; color: var(--neon-red); border: 2px solid var(--neon-red); }
+        .no:hover:not(:disabled) { background: var(--neon-red); color: #000; box-shadow: 0 0 15px var(--neon-red); }
 
-        .no {
-            background: transparent;
-            color: var(--neon-red);
-            border: 2px solid var(--neon-red);
-            box-shadow: 0 0 8px rgba(255, 7, 58, 0.2);
-        }
+        .maybe { background: transparent; color: var(--neon-yellow); border: 2px solid var(--neon-yellow); }
+        .maybe:hover:not(:disabled) { background: var(--neon-yellow); color: #000; box-shadow: 0 0 15px var(--neon-yellow); }
 
-        .no:hover:not(:disabled) {
-            background: var(--neon-red);
-            color: #000;
-            box-shadow: 0 0 15px var(--neon-red);
-        }
+        .dk { background: transparent; color: var(--neon-purple); border: 2px solid var(--neon-purple); }
+        .dk:hover:not(:disabled) { background: var(--neon-purple); color: #fff; box-shadow: 0 0 15px var(--neon-purple); }
 
-        /* Thinking Animation */
-        .thinking {
-            animation: pulse 1.5s infinite;
-            color: #aaa;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
+        .thinking { animation: pulse 1.5s infinite; color: #aaa; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
@@ -132,36 +79,35 @@
 
     <div id="game-box">
         <h1 id="question" class="thinking">Awakening...</h1>
+        
         <div id="controls" style="display: none;">
-            <button id="btn-yes" class="btn yes" onclick="sendMove('Yes')">YES</button>
-            <button id="btn-no" class="btn no" onclick="sendMove('No')">NO</button>
+            <button class="btn yes" onclick="sendMove('Yes')">YES</button>
+            <button class="btn no" onclick="sendMove('No')">NO</button>
+            <button class="btn maybe" onclick="sendMove('Maybe')">MAYBE</button>
+            <button class="btn dk" onclick="sendMove('I do not know')">DON'T KNOW</button>
         </div>
+        
         <div id="result-controls" style="display: none;">
-            <button class="btn yes" onclick="location.reload()">I WON!</button>
-            <button class="btn no" onclick="learn()">FAILED.</button>
+            <button class="btn yes" onclick="location.reload()" style="flex: 1 1 100%;">I WON! (Play Again)</button>
+            <button class="btn no" onclick="learn()" style="flex: 1 1 100%; margin-top: 10px;">YOU FAILED.</button>
         </div>
     </div>
 
     <script>
         let history = [];
-        let currentGuess = "";
-        
         const questionEl = document.getElementById('question');
         const controls = document.getElementById('controls');
         const resultControls = document.getElementById('result-controls');
-        const btnYes = document.getElementById('btn-yes');
-        const btnNo = document.getElementById('btn-no');
+        const buttons = document.querySelectorAll('.btn');
 
         function setLoading(isLoading) {
             if (isLoading) {
                 questionEl.classList.add('thinking');
-                btnYes.disabled = true;
-                btnNo.disabled = true;
+                buttons.forEach(b => b.disabled = true);
             } else {
                 questionEl.classList.remove('thinking');
-                btnYes.disabled = false;
-                btnNo.disabled = false;
-                controls.style.display = 'block';
+                buttons.forEach(b => b.disabled = false);
+                controls.style.display = 'flex';
             }
         }
 
@@ -177,8 +123,18 @@
                 });
                 
                 const data = await res.json();
-                
-                // Read errors from backend instead of crashing
+
+                // If we hit the rate limit, display the message but do NOT add to history.
+                // This lets the user just click the button again after waiting.
+                if (data.isRateLimit) {
+                    questionEl.innerText = data.question;
+                    questionEl.style.color = "var(--neon-yellow)"; // Turn text yellow as a warning
+                    setTimeout(() => { questionEl.style.color = "var(--text-color)"; }, 3000);
+                    setLoading(false);
+                    return;
+                }
+
+                // Normal Error catching
                 if (data.question && data.question.includes("ERROR")) {
                     questionEl.innerText = data.question;
                     setLoading(false);
@@ -186,21 +142,18 @@
                 }
 
                 if (data.isGuess) {
-                    currentGuess = data.finalAnswer;
                     questionEl.innerText = `Is it ${data.finalAnswer}?`;
                     controls.style.display = 'none';
-                    resultControls.style.display = 'block';
+                    resultControls.style.display = 'flex';
+                    resultControls.style.flexWrap = 'wrap';
                     questionEl.classList.remove('thinking');
                     
                     history.push({ role: "user", text: actualInput });
                     history.push({ role: "model", text: JSON.stringify(data) });
                 } else {
                     questionEl.innerText = data.question;
-                    
-                    // Maintain strict User -> Model ping-pong history
                     history.push({ role: "user", text: actualInput });
                     history.push({ role: "model", text: JSON.stringify(data) });
-                    
                     setLoading(false);
                 }
             } catch (error) {
