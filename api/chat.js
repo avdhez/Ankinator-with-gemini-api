@@ -16,31 +16,36 @@ module.exports = async function handler(req, res) {
     try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         
-        // THE FIX IS HERE: changed 'model_name' to just 'model'
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        // FIX 1 & 2: Added systemInstruction directly to the model so it never forgets the rules
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-1.5-flash",
+            systemInstruction: `
+                You are 'The Mystic Node', an all-knowing entity. You can guess any character, object, animal, or concept in existence.
+                Rules:
+                1. Ask ONE YES/NO question at a time.
+                2. Respond ONLY in strict JSON format: {"question": "Your question here", "isGuess": false, "finalAnswer": ""}
+                3. If you are 90% sure, set 'isGuess' to true, and put your guess in 'finalAnswer'.
+                4. Do not include markdown tags.
+            `
+        });
         
         const { history, userInput, isCorrection, correctThing } = req.body;
         const safeHistory = history ? history.map(h => ({ role: h.role, parts: [{ text: h.text }] })) : [];
 
-        let systemInstruction = `
-            You are 'The Mystic Node', an all-knowing entity. 
-            Respond ONLY in strict JSON format: {"question": "Your question here", "isGuess": false, "finalAnswer": ""}
-            If you are 90% sure, set 'isGuess' to true, and put your guess in 'finalAnswer'.
-            Do not include markdown tags.
-        `;
-
         // If the user is teaching the bot after a wrong guess
         if (isCorrection) {
             const learningPrompt = `I was thinking of "${correctThing}". Review our history: ${JSON.stringify(safeHistory)}. Learn from this mistake. Reply with strict JSON: {"question": "Got it! I will remember that. Let's play again!"}`;
-            await model.generateContent([systemInstruction, learningPrompt]);
+            await model.generateContent(learningPrompt);
             return res.json({ reset: true });
         }
 
-        const chat = model.start_chat({ history: safeHistory });
+        // THE FIX: Changed start_chat to startChat (JavaScript uses camelCase)
+        const chat = model.startChat({ history: safeHistory });
+        
         const result = await chat.sendMessage(userInput || "Let's start!");
         let responseText = result.response.text();
         
-        // Clean the response
+        // Clean the response from potential markdown formatting
         responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         
         res.status(200).json(JSON.parse(responseText));
