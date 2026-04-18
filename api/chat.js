@@ -1,16 +1,7 @@
-module.exports = async function handler(req, res) {
-    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
-
-    const apiKey = process.env.HF_API_KEY;
-    if (!apiKey) {
-        return res.status(200).json({ question: "SYSTEM ERROR: Missing HF_API_KEY in Vercel settings.", isGuess: false });
-    }
-
-    try {
+try {
         const { history, userInput, isCorrection, correctThing } = req.body;
         const safeHistory = history || [];
 
-        // 1. Setup the System Instructions
         const messages = [
             {
                 role: "system",
@@ -25,7 +16,6 @@ module.exports = async function handler(req, res) {
             }
         ];
 
-        // 2. Map frontend history to standard format (user -> assistant)
         safeHistory.forEach(h => {
             messages.push({
                 role: h.role === 'model' ? 'assistant' : 'user',
@@ -45,8 +35,6 @@ module.exports = async function handler(req, res) {
             });
         }
 
-        // 3. Make the API Call to Hugging Face Serverless Inference
-        // Notice we append /v1/chat/completions to the model URL
         const hfModelUrl = "https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct/v1/chat/completions";
 
         const response = await fetch(hfModelUrl, {
@@ -59,16 +47,13 @@ module.exports = async function handler(req, res) {
                 model: "meta-llama/Meta-Llama-3-8B-Instruct",
                 messages: messages,
                 temperature: 0.5,
-                max_tokens: 150 // Keep responses short and fast
+                max_tokens: 500 // Increased so the JSON never gets cut off mid-sentence
             })
         });
 
         const data = await response.json();
 
-        // 4. Handle Hugging Face Specific Errors (Cold Starts & Rate Limits)
         if (!response.ok) {
-            // Hugging Face models sometimes "go to sleep" if unused. 
-            // The API returns a 503 while it wakes up (takes ~20 seconds).
             if (response.status === 503) {
                  return res.status(200).json({ 
                     question: "My neural pathways are waking up! Give me about 20 seconds and click your answer again.", 
@@ -100,18 +85,27 @@ module.exports = async function handler(req, res) {
             });
         }
 
-        // 5. Bulletproof JSON Cleanup
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-             throw new Error("AI did not return valid JSON. It said: " + responseText);
+        // --- THE UPGRADED JSON EXTRACTOR ---
+        // 1. Strip out markdown code blocks if the AI added them
+        let cleanText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        
+        // 2. Physically find the first '{' and the last '}' to ignore conversational filler
+        const startIdx = cleanText.indexOf('{');
+        const endIdx = cleanText.lastIndexOf('}');
+        
+        if (startIdx === -1 || endIdx === -1) {
+            console.error("AI returned text with no brackets:", responseText);
+            throw new Error("Format Scrambled");
         }
         
-        const cleanJSON = jsonMatch[0].trim();
-        res.status(200).json(JSON.parse(cleanJSON));
+        cleanText = cleanText.substring(startIdx, endIdx + 1);
+        
+        // 3. Parse and send
+        res.status(200).json(JSON.parse(cleanText));
 
     } catch (error) {
         console.error("API Crash Details:", error);
-        if (error.message.includes("Unexpected token") || error.message.includes("valid JSON")) {
+        if (error.message.includes("Unexpected token") || error.message.includes("valid JSON") || error.message.includes("Format Scrambled")) {
             return res.status(200).json({ 
                 question: "The magic got scrambled. Can you click your answer again?", 
                 isGuess: false,
@@ -120,4 +114,3 @@ module.exports = async function handler(req, res) {
         }
         res.status(200).json({ question: `SERVER ERROR: ${error.message}`, isGuess: false });
     }
-};
