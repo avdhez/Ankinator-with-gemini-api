@@ -25,7 +25,7 @@ module.exports = async function handler(req, res) {
             
             // Using the lowest, fastest alive model to preserve quota
             const model = genAI.getGenerativeModel({ 
-                model: "gemini-1.5-flash-8b",
+                model: "gemini-2.5-flash",
                 systemInstruction: `
                     You are 'The Mystic Node', an Akinator-style mind-reading bot. You must figure out what the user is thinking of.
                     CRITICAL RULES:
