@@ -1,8 +1,6 @@
 module.exports = async function handler(req, res) {
-    // 1. Block anything that isn't a POST request
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
-    // 2. Check for the Hugging Face API Key
     const apiKey = process.env.HF_API_KEY;
     if (!apiKey) {
         return res.status(200).json({ 
@@ -15,7 +13,6 @@ module.exports = async function handler(req, res) {
         const { history, userInput, isCorrection, correctThing } = req.body;
         const safeHistory = history || [];
 
-        // 3. Iron-Clad System Instructions for Llama 3
         const messages = [
             {
                 role: "system",
@@ -30,7 +27,6 @@ module.exports = async function handler(req, res) {
             }
         ];
 
-        // 4. Map frontend history to Hugging Face's format (user -> assistant)
         safeHistory.forEach(h => {
             messages.push({
                 role: h.role === 'model' ? 'assistant' : 'user',
@@ -38,7 +34,6 @@ module.exports = async function handler(req, res) {
             });
         });
 
-        // 5. Handle Correction Mode vs Normal Gameplay
         if (isCorrection) {
             messages.push({
                 role: "user",
@@ -51,8 +46,8 @@ module.exports = async function handler(req, res) {
             });
         }
 
-        // 6. Make the API Call to Hugging Face Serverless Inference
-        const hfModelUrl = "https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct/v1/chat/completions";
+        // --- NEW UNIFIED HUGGING FACE ROUTER URL ---
+        const hfModelUrl = "https://api-inference.huggingface.co/v1/chat/completions";
 
         const response = await fetch(hfModelUrl, {
             method: "POST",
@@ -64,15 +59,15 @@ module.exports = async function handler(req, res) {
                 model: "meta-llama/Meta-Llama-3-8B-Instruct",
                 messages: messages,
                 temperature: 0.5,
-                max_tokens: 500 // 500 tokens ensures the JSON never gets cut off mid-sentence
+                max_tokens: 500
             })
         });
 
-        const data = await response.json();
+        // --- NEW SAFE PARSING METHOD ---
+        // Read the raw text FIRST so we don't crash if HF sends an HTML error page
+        const rawText = await response.text();
 
-        // 7. Handle Hugging Face Specific Server Errors
         if (!response.ok) {
-            // 503 means the model is "sleeping" and needs 20 seconds to boot up into the GPU
             if (response.status === 503) {
                  return res.status(200).json({ 
                     question: "My neural pathways are waking up! Give me about 20 seconds and click your answer again.", 
@@ -80,7 +75,6 @@ module.exports = async function handler(req, res) {
                     isRateLimit: true 
                 });
             }
-            // 429 means the free community server is temporarily full
             if (response.status === 429) {
                  return res.status(200).json({ 
                     question: "The servers are currently busy. Wait a moment and click again.", 
@@ -88,15 +82,17 @@ module.exports = async function handler(req, res) {
                     isRateLimit: true 
                 });
             }
-            throw new Error(data.error || "Unknown Hugging Face Error");
+            // If it's a 401 or 404, we will actually see the real error now!
+            throw new Error(`Hugging Face Error (${response.status}): ${rawText}`);
         }
 
-        // If it was just learning a correction, tell the frontend to reset
         if (isCorrection) {
             return res.status(200).json({ reset: true });
         }
 
-        // 8. Extract the AI's raw text safely
+        // Now that we know the response is a successful 200 OK, we parse it
+        const data = JSON.parse(rawText);
+
         let responseText = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : null;
         
         if (!responseText) {
@@ -107,11 +103,7 @@ module.exports = async function handler(req, res) {
             });
         }
 
-        // 9. THE BULLETPROOF JSON EXTRACTOR
-        // Strip out markdown code blocks if Llama added them
         let cleanText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
-        
-        // Physically carve out ONLY the JSON object by finding the first { and last }
         const startIdx = cleanText.indexOf('{');
         const endIdx = cleanText.lastIndexOf('}');
         
@@ -121,14 +113,20 @@ module.exports = async function handler(req, res) {
         }
         
         cleanText = cleanText.substring(startIdx, endIdx + 1);
-        
-        // 10. Parse the clean JSON and send it back to the game!
         res.status(200).json(JSON.parse(cleanText));
 
     } catch (error) {
         console.error("API Crash Details:", error);
         
-        // If the JSON parsing still fails, gracefully ask the user to click again instead of crashing
+        // If the error contains "Hugging Face Error", print it directly to the UI so you can see it
+        if (error.message.includes("Hugging Face Error")) {
+            return res.status(200).json({ 
+                question: `HF CONNECTION FAILED: ${error.message.substring(0, 100)}`, 
+                isGuess: false,
+                isRateLimit: true
+            });
+        }
+
         if (error.message.includes("Unexpected token") || error.message.includes("valid JSON") || error.message.includes("Format Scrambled")) {
             return res.status(200).json({ 
                 question: "The magic got scrambled. Can you click your answer again?", 
@@ -136,8 +134,6 @@ module.exports = async function handler(req, res) {
                 isRateLimit: true
             });
         }
-        
-        // For all other errors, show it on the screen so you can debug
         res.status(200).json({ question: `SERVER ERROR: ${error.message}`, isGuess: false });
     }
 };
