@@ -8,7 +8,7 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ question: "SYSTEM ERROR: Missing GEMINI_API_KEYS.", isGuess: false });
     }
 
-    // 1. Create an array of keys and shuffle them randomly
+    // 1. Create an array of your friends' keys and shuffle them randomly
     let keyArray = keysString.split(',').map(k => k.trim());
     keyArray = keyArray.sort(() => 0.5 - Math.random());
 
@@ -16,16 +16,16 @@ module.exports = async function handler(req, res) {
     const safeHistory = history ? history.map(h => ({ role: h.role, parts: [{ text: h.text }] })) : [];
 
     // 2. THE SILENT RETRY LOOP
-    // The server will try every single key in your list until one works.
+    // The server will try the keys one by one until it finds one that isn't rate-limited.
     for (let i = 0; i < keyArray.length; i++) {
         const currentKey = keyArray[i];
 
         try {
             const genAI = new GoogleGenerativeAI(currentKey);
             
-            // Downgraded to 1.5-flash to get 15 requests per minute instead of 5
+            // Using the lowest, fastest alive model to preserve quota
             const model = genAI.getGenerativeModel({ 
-                model: "gemini-2.5-flash-lite",
+                model: "gemini-1.5-flash-8b",
                 systemInstruction: `
                     You are 'The Mystic Node', an Akinator-style mind-reading bot. You must figure out what the user is thinking of.
                     CRITICAL RULES:
@@ -53,15 +53,20 @@ module.exports = async function handler(req, res) {
             
             const cleanJSON = jsonMatch[0].trim();
             
-            // If it succeeds, immediately return the data to the user and EXIT the loop
+            // Success! Send data to frontend and EXIT the loop.
             return res.status(200).json(JSON.parse(cleanJSON));
 
         } catch (error) {
-            // If it hits a Rate Limit, do NOT tell the user. 
-            // The loop will simply 'continue' and try the next key instantly.
+            // If a friend's key hits a Rate Limit, silently switch to the next friend's key.
             if (error.status === 429 || error.message.includes("429") || error.message.includes("quota")) {
                 console.log(`Key ${i+1} hit rate limit. Switching seamlessly...`);
                 continue; 
+            }
+
+            // If a friend's key was banned/expired, silently skip it.
+            if (error.message.includes("API_KEY_INVALID") || error.message.includes("expired")) {
+                 console.log(`Key ${i+1} is dead. Skipping...`);
+                 continue;
             }
 
             // If the AI just scrambled the JSON, we ask the user to click again
@@ -73,15 +78,15 @@ module.exports = async function handler(req, res) {
                 });
             }
 
-            // For any other weird server errors, stop and report
+            // Break the loop for hard server crashes
             return res.status(200).json({ question: `SERVER ERROR: ${error.message}`, isGuess: false });
         }
     }
 
     // 3. THE ABSOLUTE BACKUP
-    // If the code reaches this line, it means EVERY SINGLE KEY failed at the exact same time.
+    // If it loops through all 9 friends and every single key is dead or rate-limited:
     return res.status(200).json({ 
-        question: "All my neural pathways are exhausted! Please wait 15 seconds and try again.", 
+        question: "All 9 neural pathways are exhausted or disconnected! Please wait a moment and try again.", 
         isGuess: false, 
         isRateLimit: true 
     });
