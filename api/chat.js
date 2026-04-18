@@ -13,20 +13,21 @@ module.exports = async function handler(req, res) {
         const { history, userInput, isCorrection, correctThing } = req.body;
         const safeHistory = history || [];
 
-        // 1. Setup the System Instructions
+        // 1. Enhanced System Instructions for better Akinator logic
         const messages = [
             {
                 role: "system",
-                content: `You are 'The Mystic Node', an all-knowing entity. You can guess any character, object, animal, or concept.
-                Rules:
-                1. Ask ONE question at a time. The user will answer: Yes, No, Maybe, or Don't Know.
-                2. Respond ONLY in strict JSON format: {"question": "Your question here", "isGuess": false, "finalAnswer": ""}
-                3. If you are 90% sure, set 'isGuess' to true, and put your guess in 'finalAnswer'.
-                4. Absolutely NO markdown tags, NO conversational filler, ONLY output valid JSON.`
+                content: `You are 'The Mystic Node', an Akinator-style mind-reading bot. You must figure out the character, person, object, or concept the user is thinking of.
+                CRITICAL RULES:
+                1. Ask ONE strategic question at a time to narrow down the possibilities. Start very broad (e.g., "Is it alive?", "Is it real or fictional?", "Is it a human?") and slowly get more specific based on the user's answers.
+                2. DO NOT GUESS IMMEDIATELY. You must ask questions to gather clues first.
+                3. Respond ONLY in strict JSON format: {"question": "Your next question here", "isGuess": false, "finalAnswer": ""}
+                4. ONLY set "isGuess" to true if you are highly confident based on several clues. If true, put your guess in "finalAnswer".
+                5. Absolutely NO conversational filler, ONLY output the JSON object.`
             }
         ];
 
-        // 2. Map frontend history to OpenRouter's format (user -> assistant)
+        // 2. Map frontend history to OpenRouter's format
         safeHistory.forEach(h => {
             messages.push({
                 role: h.role === 'model' ? 'assistant' : 'user',
@@ -38,7 +39,7 @@ module.exports = async function handler(req, res) {
         if (isCorrection) {
             messages.push({
                 role: "user",
-                content: `I was thinking of "${correctThing}". Review our history. Learn from this mistake. Reply with strict JSON: {"question": "Got it! I will remember that. Let's play again!", "isGuess": false, "finalAnswer": ""}`
+                content: `I was thinking of "${correctThing}". Review our history. Learn from your mistake. Reply with strict JSON: {"question": "Got it! I will remember that. Let's play again!", "isGuess": false, "finalAnswer": ""}`
             });
         } else {
             messages.push({
@@ -57,16 +58,15 @@ module.exports = async function handler(req, res) {
                 "X-Title": "Mystic Node Bot"
             },
             body: JSON.stringify({
-                model: "openrouter/free", // THE FIX IS HERE
-                messages: messages
+                model: "openrouter/free",
+                messages: messages,
+                temperature: 0.7 // Prevents the AI from being too chaotic
             })
         });
 
-
-
         const data = await response.json();
 
-        // Catch OpenRouter Rate Limits (Free models can get busy)
+        // Catch OpenRouter Rate Limits
         if (!response.ok) {
             if (response.status === 429) {
                  return res.status(200).json({ 
@@ -82,14 +82,38 @@ module.exports = async function handler(req, res) {
             return res.status(200).json({ reset: true });
         }
 
-        // Extract and clean the JSON string
-        let responseText = data.choices[0].message.content;
-        responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        // 5. Extract the response safely
+        let responseText = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : null;
         
-        res.status(200).json(JSON.parse(responseText));
+        if (!responseText) {
+            return res.status(200).json({ 
+                question: "My mind went blank for a second. Can you click your answer again?", 
+                isGuess: false,
+                isRateLimit: true 
+            });
+        }
+
+        // 6. Bulletproof JSON Extraction (Finds the first { and last })
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+             throw new Error("AI did not return valid JSON. It said: " + responseText);
+        }
+        
+        const cleanJSON = jsonMatch[0].trim();
+        res.status(200).json(JSON.parse(cleanJSON));
 
     } catch (error) {
         console.error("API Crash Details:", error);
+        
+        // If it failed to parse JSON, don't crash the game, just ask the user to click again
+        if (error.message.includes("Unexpected token") || error.message.includes("valid JSON")) {
+            return res.status(200).json({ 
+                question: "The magic got scrambled. Can you click your answer again?", 
+                isGuess: false,
+                isRateLimit: true
+            });
+        }
+
         res.status(200).json({ 
             question: `SERVER ERROR: ${error.message}`, 
             isGuess: false 
