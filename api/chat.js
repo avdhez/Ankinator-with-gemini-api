@@ -47,7 +47,7 @@ module.exports = async function handler(req, res) {
         }
 
         // --- NEW UNIFIED HUGGING FACE ROUTER URL ---
-        const hfModelUrl = "https://api-inference.huggingface.co/v1/chat/completions";
+        const hfModelUrl = "https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct/v1/chat/completions";
 
         const response = await fetch(hfModelUrl, {
             method: "POST",
