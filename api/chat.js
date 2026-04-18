@@ -57,10 +57,12 @@ module.exports = async function handler(req, res) {
                 "X-Title": "Mystic Node Bot"
             },
             body: JSON.stringify({
-                model: "meta-llama/llama-3.1-8b-instruct:free",
+                model: "openrouter/free", // THE FIX IS HERE
                 messages: messages
             })
         });
+
+
 
         const data = await response.json();
 
