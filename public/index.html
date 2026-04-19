@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Avdhez the Jinn — Mind Reader</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Cinzel:wght@400;600&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Ruge+Boogie&family=Almendra:ital,wght@0,400;0,700;1,400;1,700&family=Josefin+Sans:wght@600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --void: #03010a;
@@ -26,7 +26,8 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Josefin Sans', sans-serif;
+            font-weight: 700;
             background: var(--void);
             color: #e8d5b0;
             min-height: 100vh;
@@ -102,7 +103,8 @@
         }
 
         .header-eyebrow {
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Josefin Sans', sans-serif;
+            font-weight: 700;
             font-size: 11px;
             letter-spacing: 6px;
             text-transform: uppercase;
@@ -112,9 +114,9 @@
         }
 
         .header-title {
-            font-family: 'Cinzel Decorative', serif;
-            font-size: clamp(22px, 5vw, 30px);
-            font-weight: 900;
+            font-family: 'Ruge Boogie', cursive;
+            font-size: clamp(32px, 7vw, 48px);
+            font-weight: 400;
             background: linear-gradient(135deg, var(--gold-bright) 0%, var(--gold) 40%, #e8b84b 70%, var(--gold-bright) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -125,8 +127,10 @@
         }
 
         .header-sub {
-            font-family: 'Cinzel', serif;
-            font-size: 11px;
+            font-family: 'Almendra', serif;
+            font-weight: 700;
+            font-style: italic;
+            font-size: 13px;
             letter-spacing: 4px;
             color: var(--gold-dim);
             text-transform: uppercase;
@@ -203,8 +207,8 @@
         }
 
         .jinn-name {
-            font-family: 'Cinzel', serif;
-            font-size: 12px;
+            font-family: 'Ruge Boogie', cursive;
+            font-size: 16px;
             letter-spacing: 5px;
             text-transform: uppercase;
             color: var(--gold);
@@ -257,7 +261,8 @@
         }
 
         .q-counter {
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Josefin Sans', sans-serif;
+            font-weight: 700;
             font-size: 11px;
             letter-spacing: 3px;
             color: var(--teal-dim);
@@ -266,7 +271,7 @@
 
         .q-counter span {
             color: var(--teal);
-            font-weight: 600;
+            font-weight: 700;
         }
 
         .reset-btn {
@@ -275,7 +280,8 @@
             border: 1px solid rgba(201,168,76,0.2);
             border-radius: 6px;
             padding: 5px 12px;
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Josefin Sans', sans-serif;
+            font-weight: 700;
             font-size: 11px;
             letter-spacing: 2px;
             text-transform: uppercase;
@@ -296,9 +302,9 @@
         }
 
         #question {
-            font-family: 'Cinzel', serif;
-            font-size: clamp(14px, 3.5vw, 17px);
-            font-weight: 600;
+            font-family: 'Almendra', serif;
+            font-size: clamp(15px, 3.5vw, 18px);
+            font-weight: 700;
             color: #f0e6cc;
             line-height: 1.6;
             letter-spacing: 0.3px;
@@ -306,7 +312,8 @@
 
         #question.thinking {
             color: var(--gold-dim);
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Josefin Sans', sans-serif;
+            font-weight: 700;
             font-size: 13px;
             letter-spacing: 4px;
             text-transform: uppercase;
@@ -334,6 +341,26 @@
             100% { top: 100%; opacity: 0; }
         }
 
+        /* Retry button */
+        .retry-btn {
+            display: none;
+            margin-top: 12px;
+            background: rgba(201,168,76,0.1);
+            border: 1px solid rgba(201,168,76,0.3);
+            color: var(--gold);
+            border-radius: 20px;
+            padding: 7px 20px;
+            font-family: 'Josefin Sans', sans-serif;
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .retry-btn:hover { background: rgba(201,168,76,0.2); box-shadow: var(--glow-gold); }
+        .retry-btn.visible { display: inline-block; }
+
         /* Divider */
         .divider {
             width: 100%;
@@ -344,17 +371,16 @@
 
         /* Answer buttons */
         #controls {
-            display: grid;
+            display: none;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
-            display: none;
         }
 
         .btn {
             padding: 12px 8px;
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Josefin Sans', sans-serif;
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 700;
             letter-spacing: 3px;
             text-transform: uppercase;
             border: 1px solid;
@@ -378,49 +404,21 @@
         .btn:disabled { opacity: 0.3; cursor: not-allowed; }
         .btn:not(:disabled):active { transform: scale(0.96); }
 
-        .btn-yes {
-            color: #4ade80;
-            border-color: rgba(74,222,128,0.4);
-        }
+        .btn-yes { color: #4ade80; border-color: rgba(74,222,128,0.4); }
         .btn-yes::before { background: rgba(74,222,128,0.08); }
-        .btn-yes:hover:not(:disabled) {
-            background: rgba(74,222,128,0.12);
-            border-color: #4ade80;
-            box-shadow: 0 0 20px rgba(74,222,128,0.3), inset 0 0 20px rgba(74,222,128,0.05);
-        }
+        .btn-yes:hover:not(:disabled) { background: rgba(74,222,128,0.12); border-color: #4ade80; box-shadow: 0 0 20px rgba(74,222,128,0.3), inset 0 0 20px rgba(74,222,128,0.05); }
 
-        .btn-no {
-            color: #f87171;
-            border-color: rgba(248,113,113,0.4);
-        }
+        .btn-no { color: #f87171; border-color: rgba(248,113,113,0.4); }
         .btn-no::before { background: rgba(248,113,113,0.08); }
-        .btn-no:hover:not(:disabled) {
-            background: rgba(248,113,113,0.12);
-            border-color: #f87171;
-            box-shadow: 0 0 20px rgba(248,113,113,0.3), inset 0 0 20px rgba(248,113,113,0.05);
-        }
+        .btn-no:hover:not(:disabled) { background: rgba(248,113,113,0.12); border-color: #f87171; box-shadow: 0 0 20px rgba(248,113,113,0.3), inset 0 0 20px rgba(248,113,113,0.05); }
 
-        .btn-maybe {
-            color: var(--gold-bright);
-            border-color: rgba(240,201,107,0.4);
-        }
+        .btn-maybe { color: var(--gold-bright); border-color: rgba(240,201,107,0.4); }
         .btn-maybe::before { background: rgba(240,201,107,0.08); }
-        .btn-maybe:hover:not(:disabled) {
-            background: rgba(240,201,107,0.12);
-            border-color: var(--gold-bright);
-            box-shadow: var(--glow-gold);
-        }
+        .btn-maybe:hover:not(:disabled) { background: rgba(240,201,107,0.12); border-color: var(--gold-bright); box-shadow: var(--glow-gold); }
 
-        .btn-dk {
-            color: var(--purple-bright);
-            border-color: rgba(168,85,247,0.4);
-        }
+        .btn-dk { color: var(--purple-bright); border-color: rgba(168,85,247,0.4); }
         .btn-dk::before { background: rgba(168,85,247,0.08); }
-        .btn-dk:hover:not(:disabled) {
-            background: rgba(168,85,247,0.12);
-            border-color: var(--purple-bright);
-            box-shadow: 0 0 20px rgba(168,85,247,0.3);
-        }
+        .btn-dk:hover:not(:disabled) { background: rgba(168,85,247,0.12); border-color: var(--purple-bright); box-shadow: 0 0 20px rgba(168,85,247,0.3); }
 
         /* Result controls */
         #result-controls {
@@ -431,8 +429,8 @@
 
         .btn-won {
             padding: 14px;
-            font-family: 'Cinzel', serif;
-            font-size: 12px;
+            font-family: 'Ruge Boogie', cursive;
+            font-size: 16px;
             letter-spacing: 3px;
             text-transform: uppercase;
             color: var(--gold-bright);
@@ -446,7 +444,8 @@
 
         .btn-lost {
             padding: 12px;
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Josefin Sans', sans-serif;
+            font-weight: 700;
             font-size: 12px;
             letter-spacing: 3px;
             text-transform: uppercase;
@@ -501,25 +500,27 @@
         @keyframes winSpin { from { transform: rotate(-20deg) scale(0); } to { transform: rotate(0deg) scale(1); } }
 
         .win-title {
-            font-family: 'Cinzel Decorative', serif;
-            font-size: 22px;
+            font-family: 'Ruge Boogie', cursive;
+            font-size: 28px;
             color: var(--gold-bright);
             filter: drop-shadow(0 0 10px rgba(201,168,76,0.6));
             margin-bottom: 8px;
         }
 
         .win-subtitle {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 14px;
-            letter-spacing: 2px;
+            font-family: 'Josefin Sans', sans-serif;
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: 4px;
             color: var(--teal);
             text-transform: uppercase;
             margin-bottom: 24px;
         }
 
         .win-guess {
-            font-family: 'Cinzel', serif;
-            font-size: 20px;
+            font-family: 'Almendra', serif;
+            font-weight: 700;
+            font-size: 22px;
             color: #fff;
             background: rgba(201,168,76,0.1);
             border: 1px solid rgba(201,168,76,0.3);
@@ -532,7 +533,8 @@
 
         .win-btn {
             padding: 13px;
-            font-family: 'Cinzel', serif;
+            font-family: 'Josefin Sans', sans-serif;
+            font-weight: 700;
             font-size: 11px;
             letter-spacing: 3px;
             text-transform: uppercase;
@@ -541,18 +543,10 @@
             transition: all 0.3s;
         }
 
-        .win-btn-yes {
-            background: rgba(201,168,76,0.15);
-            color: var(--gold-bright);
-            border: 1px solid var(--gold);
-        }
+        .win-btn-yes { background: rgba(201,168,76,0.15); color: var(--gold-bright); border: 1px solid var(--gold); }
         .win-btn-yes:hover { background: rgba(201,168,76,0.25); box-shadow: var(--glow-gold); }
 
-        .win-btn-no {
-            background: transparent;
-            color: #888;
-            border: 1px solid #333;
-        }
+        .win-btn-no { background: transparent; color: #888; border: 1px solid #333; }
         .win-btn-no:hover { color: #f87171; border-color: #f87171; }
 
         /* Scroll indicator */
@@ -561,7 +555,8 @@
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Josefin Sans', sans-serif;
+            font-weight: 700;
             font-size: 10px;
             letter-spacing: 3px;
             color: rgba(201,168,76,0.3);
@@ -595,7 +590,7 @@
     <div class="win-box">
         <div class="win-icon">🔮</div>
         <div class="win-title">I Knew It!</div>
-        <div class="win-subtitle">The Jinn sees all</div>
+        <div class="win-subtitle">The Jinn Sees All</div>
         <div class="win-guess" id="win-guess-text"></div>
         <div class="win-actions">
             <button class="win-btn win-btn-yes" onclick="winPlayAgain()">✦ Play Again</button>
@@ -630,9 +625,10 @@
             <button class="reset-btn" onclick="restartGame()">↻ New Game</button>
         </div>
 
-        <div class="question-area">
+        <div class="question-area" style="flex-direction:column;gap:10px;">
             <div class="scan-line" id="scan-line"></div>
             <div id="question" class="thinking">Awakening...</div>
+            <button class="retry-btn" id="retry-btn" onclick="retryLast()">↺ Try Again</button>
         </div>
 
         <div class="divider"></div>
@@ -662,14 +658,12 @@
     const ctx = canvas.getContext('2d');
     const CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノ01ابتثجحخدذرزسشصضطظعغفقكلمنهوي∆∇∑∏√∞≈≠';
     let cols, drops;
-
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
         cols = Math.floor(canvas.width / 20);
         drops = Array(cols).fill(1);
     }
-
     function draw() {
         ctx.fillStyle = 'rgba(3,1,10,0.05)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -682,7 +676,6 @@
             drops[i]++;
         }
     }
-
     resize();
     window.addEventListener('resize', resize);
     setInterval(draw, 60);
@@ -717,10 +710,8 @@ window.addEventListener('resize', () => {
     confettiCanvas.width = window.innerWidth;
     confettiCanvas.height = window.innerHeight;
 });
-
 let particles = [];
 const COLORS = ['#c9a84c','#f0c96b','#00e5cc','#a855f7','#f87171','#4ade80','#fff','#e8d5b0'];
-
 function createParticle(x, y) {
     return {
         x, y,
@@ -736,11 +727,9 @@ function createParticle(x, y) {
         decay: 0.012 + Math.random() * 0.008
     };
 }
-
 function blast(x, y, count = 120) {
     for (let i = 0; i < count; i++) particles.push(createParticle(x, y));
 }
-
 function multiBlast() {
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight / 2;
@@ -749,33 +738,20 @@ function multiBlast() {
     setTimeout(() => { blast(cx * 0.2, cy * 1.2, 50); blast(cx * 1.8, cy * 1.2, 50); }, 400);
     setTimeout(() => { blast(cx, cy * 0.2, 80); }, 600);
 }
-
 function animateConfetti() {
     requestAnimationFrame(animateConfetti);
-    if (particles.length === 0) {
-        cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
-        return;
-    }
+    if (particles.length === 0) { cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height); return; }
     cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
     particles = particles.filter(p => p.alpha > 0);
     particles.forEach(p => {
-        p.vy += p.gravity;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.angle += p.spin;
-        p.alpha -= p.decay;
+        p.vy += p.gravity; p.x += p.vx; p.y += p.vy;
+        p.angle += p.spin; p.alpha -= p.decay;
         cctx.save();
         cctx.globalAlpha = Math.max(0, p.alpha);
-        cctx.translate(p.x, p.y);
-        cctx.rotate(p.angle);
+        cctx.translate(p.x, p.y); cctx.rotate(p.angle);
         cctx.fillStyle = p.color;
-        if (p.shape === 'rect') {
-            cctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
-        } else {
-            cctx.beginPath();
-            cctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
-            cctx.fill();
-        }
+        if (p.shape === 'rect') cctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+        else { cctx.beginPath(); cctx.arc(0, 0, p.size / 2, 0, Math.PI * 2); cctx.fill(); }
         cctx.restore();
     });
 }
@@ -787,35 +763,58 @@ animateConfetti();
 let history = JSON.parse(sessionStorage.getItem('avdhezHistory')) || [];
 let questionCount = parseInt(sessionStorage.getItem('avdhezQCount')) || 0;
 let pendingGuess = '';
+let lastInput = 'Start';
+let isLoading = false;
+let stuckTimer = null;
 
-const questionEl = document.getElementById('question');
-const controls = document.getElementById('controls');
-const resultControls = document.getElementById('result-controls');
-const scanLine = document.getElementById('scan-line');
-const qNum = document.getElementById('q-num');
-const jinnEmoji = document.getElementById('jinn-emoji');
+const questionEl    = document.getElementById('question');
+const controls      = document.getElementById('controls');
+const resultControls= document.getElementById('result-controls');
+const scanLine      = document.getElementById('scan-line');
+const qNum          = document.getElementById('q-num');
+const jinnEmoji     = document.getElementById('jinn-emoji');
+const retryBtn      = document.getElementById('retry-btn');
+
+const THINKING_MSGS = [
+    'Reading your mind...',
+    'Consulting the void...',
+    'Sensing your thoughts...',
+    'The Jinn awakens...',
+    'Peering into your soul...',
+    'Unveiling your secret...',
+    'The spirits whisper...',
+];
 
 function saveState() {
     sessionStorage.setItem('avdhezHistory', JSON.stringify(history));
     sessionStorage.setItem('avdhezQCount', questionCount);
 }
-
 function clearState() {
     sessionStorage.removeItem('avdhezHistory');
     sessionStorage.removeItem('avdhezQCount');
-    history = [];
-    questionCount = 0;
+    history = []; questionCount = 0;
 }
 
-function setLoading(isLoading) {
+function setLoading(on) {
+    isLoading = on;
     const btns = document.querySelectorAll('.btn, .btn-won, .btn-lost');
-    if (isLoading) {
+    if (on) {
         questionEl.className = 'thinking';
-        questionEl.textContent = ['Reading your mind...', 'Consulting the void...', 'Sensing your thoughts...', 'The jinn awakens...'][Math.floor(Math.random() * 4)];
+        questionEl.textContent = THINKING_MSGS[Math.floor(Math.random() * THINKING_MSGS.length)];
         scanLine.classList.add('active');
         btns.forEach(b => b.disabled = true);
         jinnEmoji.textContent = '🔮';
+        retryBtn.classList.remove('visible');
+
+        // Show retry after 18s if still stuck
+        stuckTimer = setTimeout(() => {
+            if (isLoading) {
+                questionEl.textContent = 'The connection was lost to the spirit realm...';
+                retryBtn.classList.add('visible');
+            }
+        }, 18000);
     } else {
+        clearTimeout(stuckTimer);
         questionEl.className = '';
         scanLine.classList.remove('active');
         btns.forEach(b => b.disabled = false);
@@ -824,8 +823,11 @@ function setLoading(isLoading) {
     }
 }
 
-function updateCounter() {
-    qNum.textContent = questionCount;
+function updateCounter() { qNum.textContent = questionCount; }
+
+function retryLast() {
+    retryBtn.classList.remove('visible');
+    sendMove(lastInput);
 }
 
 function restartGame() {
@@ -833,26 +835,35 @@ function restartGame() {
     resultControls.style.display = 'none';
     controls.style.display = 'none';
     document.getElementById('win-overlay').style.display = 'none';
+    retryBtn.classList.remove('visible');
     updateCounter();
     sendMove('Start');
 }
 
 async function sendMove(input) {
+    if (isLoading) return;
+    lastInput = input;
     setLoading(true);
     const actualInput = input === 'Start' ? "Let's start!" : input;
+
+    // 20s frontend abort — prevents eternal loading
+    const controller = new AbortController();
+    const fetchTimeout = setTimeout(() => controller.abort(), 20000);
 
     try {
         const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ history, userInput: actualInput })
+            body: JSON.stringify({ history, userInput: actualInput }),
+            signal: controller.signal
         });
+        clearTimeout(fetchTimeout);
 
         const rawText = await res.text();
         let data;
         try { data = JSON.parse(rawText); }
         catch {
-            questionEl.textContent = "A ripple in the void — click again.";
+            questionEl.textContent = 'A ripple in the void — click again.';
             setLoading(false);
             return;
         }
@@ -879,6 +890,8 @@ async function sendMove(input) {
             jinnEmoji.textContent = '🧞';
             controls.style.display = 'none';
             resultControls.style.display = 'flex';
+            clearTimeout(stuckTimer);
+            isLoading = false;
         } else {
             questionCount++;
             updateCounter();
@@ -891,15 +904,20 @@ async function sendMove(input) {
         saveState();
 
     } catch (err) {
-        questionEl.textContent = `Connection severed: ${err.message}`;
+        clearTimeout(fetchTimeout);
         setLoading(false);
+        if (err.name === 'AbortError') {
+            questionEl.textContent = 'The vision timed out. Click retry.';
+        } else {
+            questionEl.textContent = `Connection severed: ${err.message}`;
+        }
+        retryBtn.classList.add('visible');
     }
 }
 
 function showWinOverlay() {
     document.getElementById('win-guess-text').textContent = pendingGuess || 'Your thought';
-    const overlay = document.getElementById('win-overlay');
-    overlay.style.display = 'flex';
+    document.getElementById('win-overlay').style.display = 'flex';
     setTimeout(multiBlast, 100);
     setTimeout(multiBlast, 800);
     setTimeout(multiBlast, 1600);
@@ -918,12 +936,10 @@ function winWrong() {
 async function learn() {
     const correctThing = prompt('The Jinn was wrong. What were you thinking of?');
     if (!correctThing) return;
-
     questionEl.textContent = 'Absorbing knowledge...';
     questionEl.className = 'thinking';
     scanLine.classList.add('active');
     resultControls.style.display = 'none';
-
     try {
         await fetch('/api/chat', {
             method: 'POST',
@@ -931,11 +947,9 @@ async function learn() {
             body: JSON.stringify({ history, isCorrection: true, correctThing })
         });
     } catch {}
-
     restartGame();
 }
 
-// Resume or start
 window.onload = () => {
     updateCounter();
     if (history.length > 0) {
