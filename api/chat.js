@@ -25,8 +25,6 @@ module.exports = async function handler(req, res) {
     const { history, userInput, isCorrection, correctThing } = req.body;
 
     const isFirstMove = !history || history.length === 0;
-
-    // Count how many questions have been asked so far (each round = 2 history entries: user + model)
     const questionCount = history ? Math.floor(history.length / 2) : 0;
 
     const safeHistory = history ? history.map(h => ({
@@ -34,35 +32,47 @@ module.exports = async function handler(req, res) {
         content: h.text
     })) : [];
 
-    // Inject urgency based on how many questions have been asked
-    let strategyNote = "";
-    if (questionCount >= 15) {
-        strategyNote = `\n\nCRITICAL: You have asked ${questionCount} questions already. You MUST make your best guess RIGHT NOW. Set isGuess to true. Do not ask another question.`;
-    } else if (questionCount >= 10) {
-        strategyNote = `\n\nWARNING: You have asked ${questionCount} questions. You should be very close to a confident guess. If you have a strong hypothesis, commit to it now by setting isGuess to true.`;
-    } else if (questionCount >= 6) {
-        strategyNote = `\n\nNOTE: You have asked ${questionCount} questions. Start narrowing down to specific candidates. Stop asking broad category questions — focus on your hypothesis.`;
+    // Phase instruction injected dynamically based on question count
+    let phaseNote = "";
+    if (questionCount >= 20) {
+        phaseNote = `\n\nPHASE — FORCED GUESS: You have asked ${questionCount} questions. You MUST guess now. Pick the single most likely answer based on all clues. Set isGuess to true, confidence to your best estimate.`;
+    } else if (questionCount >= 12) {
+        phaseNote = `\n\nPHASE — COMMIT: You have asked ${questionCount} questions. You should have a clear hypothesis. If your confidence is 85% or above, guess now. Otherwise ask ONE more targeted question to resolve your uncertainty.`;
+    } else if (questionCount >= 7) {
+        phaseNote = `\n\nPHASE — NARROW: You have asked ${questionCount} questions. Stop asking broad category questions. You should have a hypothesis — ask targeted questions to verify it specifically.`;
+    } else {
+        phaseNote = `\n\nPHASE — EXPLORE: Ask broad questions to eliminate large categories quickly.`;
     }
 
-    const systemPrompt = `You are 'The Mystic Node', an Akinator-style mind-reading bot. Guess what the user is thinking of by asking smart yes/no questions.
+    const systemPrompt = `You are 'The Mystic Node', an expert Akinator-style mind-reading bot. Your goal is to guess what the user is thinking of — and guess CORRECTLY. Accuracy matters far more than speed.
 
-OUTPUT FORMAT — respond with ONLY a raw JSON object, nothing else before or after:
-{"reasoning":"your analysis here","question":"your single yes/no question","isGuess":false,"finalAnswer":""}
+OUTPUT FORMAT — respond with ONLY a raw JSON object, no text before or after:
+{"reasoning":"...","question":"...","isGuess":false,"finalAnswer":"","confidence":0}
 
-STRATEGY:
-- In "reasoning", summarize what you know so far and what your current best hypothesis is.
-- Questions 1–4: Broad category (person/place/object/concept, real/fictional, living/non-living, famous/obscure).
-- Questions 5–8: Narrow the category (field, gender, era, size, function, location, etc).
-- Questions 9–12: Zero in on specific candidates based on your hypothesis.
-- Question 13+: Commit to your best guess. Set isGuess to true.
+FIELD RULES:
+- "reasoning": Think step by step. List what you know, what you've eliminated, and what your current top hypothesis is with reasons for and against it.
+- "question": A single question answerable only with Yes / No / Maybe / Don't Know.
+- "isGuess": Set to true ONLY when confidence is 85 or above. Otherwise always false.
+- "finalAnswer": Your specific guess when isGuess is true. Must be a real, specific answer (e.g. "Albert Einstein", "The Eiffel Tower", "a dolphin"). Never vague.
+- "confidence": A number 0–100 representing how sure you are of your current top hypothesis.
 
-RULES:
-- Each question must be answerable with Yes / No / Maybe / Don't Know only.
-- NEVER ask "Is it X or Y?" — ask about one thing at a time.
-- NEVER ask about random unrelated objects (doorstop, shoe rack, mat, rug, etc.) without evidence pointing there.
-- NEVER repeat a question already asked in the history.
-- When isGuess is true, set question to "Is it [finalAnswer]?" and put your best guess in finalAnswer.
-- Output ONLY the JSON. No markdown. No code fences. No text outside the JSON.${strategyNote}`;
+GUESSING RULES — follow these strictly:
+- If confidence is below 85, you MUST ask another question. Do NOT guess.
+- If you have two or more equally likely hypotheses, ask a question that distinguishes between them. Do NOT guess randomly.
+- Only guess when the clues point clearly and specifically to ONE answer.
+- When isGuess is true, set question to "Is it [finalAnswer]?"
+
+QUESTIONING STRATEGY:
+- Questions 1–4: Broad (person/place/object/concept, real/fictional, living/non-living, famous/obscure, bigger/smaller than a car).
+- Questions 5–8: Mid-level (category, field, era, gender, location, function, cultural origin).
+- Questions 9–14: Specific verification (test your top hypothesis directly with targeted clues).
+- Question 15+: Guess only if confident, otherwise ask one final distinguishing question.
+
+STRICT RULES:
+- Never ask "Is it X or Y?" — one thing at a time only.
+- Never repeat a question already in the conversation history.
+- Never guess a vague category (e.g. "a household item") — always guess a specific thing.
+- Output ONLY the JSON. No markdown, no code fences, no explanation outside the JSON.${phaseNote}`;
 
     let lastError = null;
 
@@ -78,7 +88,7 @@ RULES:
                 messages = [
                     { role: "system", content: systemPrompt },
                     ...safeHistory,
-                    { role: "user", content: `The answer was "${correctThing}". Note it. Reply with ONLY this JSON: {"reasoning":"Noted.","question":"Got it! Let's play again!","isGuess":false,"finalAnswer":""}` }
+                    { role: "user", content: `The answer was "${correctThing}". Note this for future games. Reply with ONLY this JSON: {"reasoning":"Noted. I will remember this.","question":"Got it! Let's play again!","isGuess":false,"finalAnswer":"","confidence":0}` }
                 ];
             } else {
                 const firstMoveNote = isFirstMove
@@ -95,8 +105,8 @@ RULES:
             const completion = await groq.chat.completions.create({
                 model: "llama-3.3-70b-versatile",
                 messages,
-                temperature: 0.7,
-                max_tokens: 600,
+                temperature: 0.5,
+                max_tokens: 800,
             });
 
             const responseText = completion.choices[0]?.message?.content || "";
@@ -112,12 +122,26 @@ RULES:
 
             const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
             if (!jsonMatch) {
-                console.error("No JSON in response:", responseText.slice(0, 200));
+                console.error("No JSON in response:", responseText.slice(0, 300));
                 throw new Error("Format Scrambled");
             }
 
             const parsed = JSON.parse(jsonMatch[0].trim());
             if (!parsed.question) throw new Error("Format Scrambled: missing question");
+
+            const confidence = parsed.confidence || 0;
+
+            // Server-side guard: if model tries to guess below 85% confidence, force it back to questioning
+            if (parsed.isGuess && confidence < 85) {
+                console.log(`Guess blocked — confidence too low: ${confidence}%. Forcing more questions.`);
+                return res.status(200).json({
+                    question: parsed.question.startsWith("Is it")
+                        ? `I'm not fully sure yet — let me ask a bit more. ${parsed.question.replace("Is it", "Could it be related to")}`
+                        : parsed.question,
+                    isGuess: false,
+                    finalAnswer: ""
+                });
+            }
 
             return res.status(200).json({
                 question: parsed.question,
