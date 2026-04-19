@@ -1,8 +1,14 @@
 const Groq = require("groq-sdk");
 
-// ─────────────────────────────────────────
-//  TIMEOUT WRAPPER
-// ─────────────────────────────────────────
+const FIRST_QUESTION_HINTS = [
+    "Start by asking whether it is a real person or a fictional character.",
+    "Start by asking whether it is a living thing.",
+    "Start by asking whether a typical adult worldwide would know what this is.",
+    "Start by asking whether it is a human being (real or fictional).",
+    "Start by asking whether it is something related to entertainment.",
+    "Start by asking whether it is something that physically exists in the real world.",
+];
+
 function withTimeout(promise, ms) {
     return Promise.race([
         promise,
@@ -10,43 +16,6 @@ function withTimeout(promise, ms) {
     ]);
 }
 
-// ─────────────────────────────────────────
-//  CALL GROQ — rotate keys silently
-// ─────────────────────────────────────────
-async function callGroq(keyArray, messages, temp = 0.3) {
-    let lastError = null;
-    for (let i = 0; i < keyArray.length; i++) {
-        try {
-            const groq = new Groq({ apiKey: keyArray[i] });
-            const completion = await withTimeout(
-                groq.chat.completions.create({
-                    model: "llama-3.3-70b-versatile",
-                    messages,
-                    temperature: temp,
-                    max_tokens: 1000,
-                }),
-                14000
-            );
-            return completion.choices[0]?.message?.content || "";
-        } catch (err) {
-            lastError = err;
-            const msg = (err.message || "").toLowerCase();
-            const status = err.status || err.statusCode;
-            console.error(`Key${i+1}/${keyArray.length} — ${status} | ${err.message}`);
-            if (
-                msg.includes('timeout') ||
-                status === 429 || msg.includes("429") || msg.includes("quota") || msg.includes("rate limit") ||
-                status === 401 || msg.includes("invalid api key") || msg.includes("unauthorized") || msg.includes("expired")
-            ) continue;
-            throw err;
-        }
-    }
-    throw lastError || new Error("All keys exhausted");
-}
-
-// ─────────────────────────────────────────
-//  PARSE JSON FROM RAW RESPONSE
-// ─────────────────────────────────────────
 function parseJSON(text) {
     const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
     const match = cleaned.match(/\{[\s\S]*\}/);
@@ -56,156 +25,25 @@ function parseJSON(text) {
     return parsed;
 }
 
-// ─────────────────────────────────────────
-//  EXTRACT CONFIRMED FACTS FROM HISTORY
-//  Build a plain-English summary of what we know so far
-// ─────────────────────────────────────────
-function buildFactSummary(history) {
-    if (!history || history.length < 2) return "";
-
+// Extract a clean readable list of Q&A pairs from history
+function extractQAPairs(history) {
+    if (!history || history.length < 2) return "None yet.";
     const pairs = [];
-    for (let i = 0; i < history.length - 1; i += 2) {
-        const userMsg = history[i];       // user answer
-        const modelMsg = history[i + 1];  // model question that led to this answer
-
-        if (!userMsg || !modelMsg) continue;
-
-        // The model asked the question, user answered
+    for (let i = 0; i + 1 < history.length; i += 2) {
+        const userTurn  = history[i];
+        const modelTurn = history[i + 1];
         let question = "";
-        let answer = userMsg.text || "";
-
+        const answer = (userTurn?.text || "").trim();
         try {
-            const modelData = JSON.parse(modelMsg.text);
-            question = modelData.question || "";
+            question = JSON.parse(modelTurn?.text || "{}").question || modelTurn?.text || "";
         } catch {
-            question = modelMsg.text || "";
+            question = modelTurn?.text || "";
         }
-
-        if (question && answer) {
-            pairs.push(`Q: "${question}" → A: "${answer}"`);
-        }
+        if (question && answer) pairs.push(`  [${pairs.length + 1}] Q: "${question}"  →  A: "${answer}"`);
     }
-
-    if (pairs.length === 0) return "";
-    return `\n\nCONFIRMED FACTS FROM THIS GAME (use these to deduce):\n${pairs.join("\n")}`;
+    return pairs.length ? pairs.join("\n") : "None yet.";
 }
 
-// ─────────────────────────────────────────
-//  RANDOM FIRST QUESTION VARIETY
-// ─────────────────────────────────────────
-const OPENERS = [
-    "Think about whether it is a living person.",
-    "Think about whether it is a real thing or a fictional/imaginary character.",
-    "Think about whether a typical adult would recognise what you're thinking of.",
-    "Think about whether it is a human being.",
-    "Think about whether it is something you can physically touch.",
-    "Think about whether it is associated with entertainment (movies, TV, YouTube, games, etc.).",
-    "Think about whether it is bigger than a house.",
-    "Think about whether it is something that currently exists in the real world.",
-];
-
-// ─────────────────────────────────────────
-//  MAIN SYSTEM PROMPT
-// ─────────────────────────────────────────
-function buildSystemPrompt(questionCount, factSummary, phaseNote) {
-    return `You are Avdhez the Jinn — the world's greatest mind reader. You guess what someone is thinking of in as few questions as possible by applying brilliant deductive reasoning. You are especially skilled at identifying famous people: actors, YouTubers, athletes, politicians, musicians, fictional/comic characters, and anime characters.
-
-OUTPUT FORMAT — raw JSON only, nothing else before or after, no markdown:
-{"reasoning":"...","hypothesis":"...","eliminatedCategories":"...","questionType":"...","question":"...","isGuess":false,"finalAnswer":"","confidence":0}
-
-FIELD DEFINITIONS:
-- "reasoning": Your full deduction chain. List: (1) every confirmed fact, (2) what each answer eliminated, (3) your top 3 hypotheses with % probability each, (4) why you chose THIS specific question.
-- "hypothesis": Your single current best guess (NEVER put this in the question until final guess).
-- "eliminatedCategories": Comma-separated list of categories/types already ruled out. Prevents repeating question types.
-- "questionType": Label the TYPE of question you're asking (e.g., "category", "gender", "nationality", "field", "era", "medium", "fame-level", "physical-trait", "association", "final-guess"). Used to prevent repetition.
-- "question": One yes/no question answerable ONLY with Yes / No / Maybe / Don't Know.
-- "confidence": 0–100 integer.
-- "isGuess": true ONLY when confidence >= 82.
-- "finalAnswer": Specific answer when isGuess is true.
-${factSummary}
-
-═══════════════════════════════════════════
- MASTER STRATEGY: DECISION TREE DEDUCTION
-═══════════════════════════════════════════
-
-LEVEL 1 — ENTITY TYPE (Q1-2): What kind of thing is it?
-  • Real person vs fictional character vs object vs place vs concept vs animal
-  • If real person → go to PERSON TREE
-  • If fictional → go to FICTION TREE
-  • If object/concept → go to OBJECT TREE
-
-LEVEL 2A — PERSON TREE (Q3-6):
-  Step 1 → Gender (male/female/non-binary)
-  Step 2 → Still alive or deceased?
-  Step 3 → Field: Is the person primarily known for acting? → music? → sports? → YouTube/content creation? → politics? → comedy? → science/tech? → business?
-  Step 4 → Nationality/Origin: Western (US/UK/Canada/Australia)? → Asian? → European? → Latin American?
-  Step 5 → Era: Currently active/young (under 40)? → middle-aged (40-60)? → older or historical?
-  Step 6 → Fame level: Global superstar known by everyone? → famous within a specific community?
-
-LEVEL 2B — FICTION TREE (Q3-6):
-  Step 1 → Is the character from a movie? → TV show? → anime? → comic book/manga? → video game? → book?
-  Step 2 → Genre: superhero? → fantasy? → sci-fi? → comedy? → horror? → romance? → action?
-  Step 3 → Is the character human? → animal? → robot/AI? → alien? → supernatural?
-  Step 4 → Is it from a specific major franchise? (Marvel/DC/Disney/Studio Ghibli/Shonen anime etc.)
-  Step 5 → Is the character primarily the protagonist/hero?
-
-LEVEL 2C — OBJECT TREE (Q3-6):
-  Step 1 → Can you hold it in one hand?
-  Step 2 → Is it man-made or natural?
-  Step 3 → Does it have a specific function/use?
-  Step 4 → Is it found in a home? office? outdoors?
-  Step 5 → Is it electronic/digital?
-
-LEVEL 3 — SPECIFIC VERIFICATION (Q7-12):
-  Once you have a hypothesis, verify it through INDIRECT PROPERTY questions:
-  • Ask about attributes of the specific person/character WITHOUT naming them
-  • Example for an actor: "Has this person appeared in a superhero movie?" instead of "Is it [name]?"
-  • Example for YouTuber: "Does this person primarily make gaming content?" instead of "Is it [name]?"
-  • Example for comic character: "Does this character wear a mask?" instead of "Is it [name]?"
-
-LEVEL 4 — FINAL GUESS (Q13+ or when confidence >= 82):
-  • Set isGuess:true, put specific name in finalAnswer
-  • Set question to "Is it [finalAnswer]?"
-
-═══════════════════════════════════════════
- QUESTION QUALITY RULES
-═══════════════════════════════════════════
-1. NEVER repeat the same TYPE of question (tracked in eliminatedCategories). Once you ask about gender, never ask about gender again.
-2. NEVER ask "Is it X or Y?" — one subject per question only.
-3. NEVER name your hypothesis in the question until making the final guess.
-4. NEVER ask vague questions that give minimal information. Every question must meaningfully narrow the field.
-5. USE USER ANSWERS AS REFERENCES: If the user said "Yes" to "Is it a real person?" and "Yes" to "Is it male?" and "Yes" to "Is it a YouTuber?" — your next question must USE these three facts to narrow further, not repeat them.
-6. CROSS-REFERENCE ANSWERS: Combine multiple confirmed facts. "Real + Male + YouTuber + under 40" → narrow to specific YouTuber types.
-7. BINARY HALVING: Each question should eliminate roughly half the remaining possibilities.
-8. PEOPLE-SPECIFIC: For famous people, key questions are: primary field, nationality, era, signature works, physical appearance traits, awards/achievements, controversies, collaborators.
-${phaseNote}
-
-FORBIDDEN:
-• Never output text outside the JSON
-• Never repeat a question already in conversation history
-• Never ask the same question TYPE twice (check eliminatedCategories)
-• Never guess vaguely — finalAnswer must be a specific name like "MrBeast", "Spider-Man", "Cristiano Ronaldo", "Leonardo DiCaprio"`;
-}
-
-// ─────────────────────────────────────────
-//  PHASE NOTE based on question count
-// ─────────────────────────────────────────
-function getPhaseNote(questionCount) {
-    if (questionCount >= 18) {
-        return `\n\nFORCED GUESS: ${questionCount} questions asked. Set isGuess:true NOW. No more questions allowed.`;
-    } else if (questionCount >= 12) {
-        return `\n\nCOMMIT PHASE (${questionCount} Qs): confidence >= 82 → guess immediately. Otherwise ONE more sharp question only.`;
-    } else if (questionCount >= 7) {
-        return `\n\nVERIFY PHASE (${questionCount} Qs): You must have a hypothesis. Ask indirect property questions to confirm it. If confidence >= 82, guess now.`;
-    } else if (questionCount >= 4) {
-        return `\n\nNARROW PHASE (${questionCount} Qs): You know the entity type. Now drill into field, nationality, era, medium. Eliminate sub-categories fast.`;
-    }
-    return `\n\nEXPLORE PHASE (${questionCount} Qs): Determine entity type first (real person / fictional character / object / concept). Binary elimination only.`;
-}
-
-// ─────────────────────────────────────────
-//  HANDLER
-// ─────────────────────────────────────────
 module.exports = async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
@@ -219,7 +57,6 @@ module.exports = async function handler(req, res) {
     const isFirstMove = !history || history.length === 0;
     const questionCount = history ? Math.floor(history.length / 2) : 0;
 
-    // Build history in Groq format
     const safeHistory = history ? history.map(h => ({
         role: h.role === "model" ? "assistant" : "user",
         content: h.text
@@ -227,79 +64,231 @@ module.exports = async function handler(req, res) {
 
     // ── CORRECTION MODE ──
     if (isCorrection) {
-        try {
-            await callGroq(keyArray, [
-                { role: "system", content: `Reply ONLY with this exact JSON, nothing else: {"reasoning":"Noted.","hypothesis":"","eliminatedCategories":"","questionType":"reset","question":"The Jinn learns from every defeat. Shall we play again?","isGuess":false,"finalAnswer":"","confidence":0}` },
-                { role: "user", content: `The answer was "${correctThing}".` }
-            ]);
-        } catch {}
+        for (let i = 0; i < keyArray.length; i++) {
+            try {
+                const groq = new Groq({ apiKey: keyArray[i] });
+                await withTimeout(groq.chat.completions.create({
+                    model: "llama-3.3-70b-versatile",
+                    messages: [
+                        { role: "system", content: `Reply ONLY with this exact JSON: {"reasoning":"Noted.","hypothesis":"","question":"The Jinn learns from every defeat. Let us play again!","isGuess":false,"finalAnswer":"","confidence":0}` },
+                        { role: "user", content: `The answer was "${correctThing}".` }
+                    ],
+                    temperature: 0.1, max_tokens: 100,
+                }), 10000);
+                break;
+            } catch {}
+        }
         return res.status(200).json({ reset: true });
     }
 
-    // Build fact summary from history for context injection
-    const factSummary = buildFactSummary(history || []);
-    const phaseNote = getPhaseNote(questionCount);
-    const systemPrompt = buildSystemPrompt(questionCount, factSummary, phaseNote);
+    // ── BUILD QA SUMMARY for context ──
+    const qaSummary = extractQAPairs(history || []);
 
-    try {
-        const firstHint = isFirstMove
-            ? ` OPENING HINT: ${OPENERS[Math.floor(Math.random() * OPENERS.length)]}`
-            : "";
+    // ── PHASE NOTE ──
+    let phaseNote = "";
+    if (questionCount >= 18) {
+        phaseNote = `YOU HAVE ASKED ${questionCount} QUESTIONS. You MUST guess now — set isGuess:true with your best answer. No more questions are allowed.`;
+    } else if (questionCount >= 11) {
+        phaseNote = `COMMIT PHASE — ${questionCount} questions asked. If confidence >= 80 → guess immediately. Otherwise ask exactly ONE more sharp question that resolves remaining ambiguity.`;
+    } else if (questionCount >= 6) {
+        phaseNote = `VERIFY PHASE — ${questionCount} questions asked. You should have a clear hypothesis. Confirm it through indirect attribute questions WITHOUT naming it. Guess if confidence >= 80.`;
+    } else if (questionCount >= 3) {
+        phaseNote = `NARROW PHASE — ${questionCount} questions asked. Entity type is known. Drill into sub-category, field, nationality, era, medium, or defining trait. Do not revisit already-confirmed facts.`;
+    } else {
+        phaseNote = `EXPLORE PHASE — ${questionCount} questions asked. Determine the broad entity type first. Use binary questions that cut possibility space in half.`;
+    }
 
-        const messages = [
-            { role: "system", content: systemPrompt + firstHint },
-            ...safeHistory,
-            { role: "user", content: userInput || "Let's start!" }
-        ];
+    const systemPrompt = `You are Avdhez the Jinn — a legendary mind reader who deduces what someone is thinking through precise, logical questions. You excel at identifying famous real people (actors, YouTubers, musicians, athletes, politicians, streamers), fictional characters (superheroes, anime, comics, cartoons, video games), animals, objects, places, and concepts.
 
-        const raw = await callGroq(keyArray, messages, 0.3);
-        const parsed = parseJSON(raw);
-        const confidence = parsed.confidence || 0;
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT: Raw JSON only. No text before or after. No markdown.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{
+  "reasoning": "...",
+  "hypothesis": "...",
+  "question": "...",
+  "isGuess": false,
+  "finalAnswer": "",
+  "confidence": 0
+}
 
-        console.log(`Q${questionCount+1} | type:${parsed.questionType} | hypothesis:"${parsed.hypothesis}" | confidence:${confidence}%`);
+FIELD RULES:
+• "reasoning" — This is your brain. Write it fully:
+    (a) List every confirmed fact from prior Q&A
+    (b) What each answer eliminated from consideration
+    (c) Your top 3 current hypotheses with % likelihood each
+    (d) Why this next question is the optimal choice given what you know
+• "hypothesis" — Your current best single guess (secret — never say it in the question)
+• "question" — One yes/no question, answerable with Yes / No / Maybe / Don't Know only
+• "confidence" — 0 to 100 integer representing certainty in your hypothesis
+• "isGuess" — true ONLY when confidence >= 80
+• "finalAnswer" — Specific name/thing when guessing (e.g. "MrBeast", "Naruto", "Eiffel Tower")
 
-        // Block premature guesses below threshold
-        if (parsed.isGuess && confidence < 82) {
-            console.log(`Guess blocked — confidence ${confidence}% < 82%. Requesting verification question.`);
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ALL PREVIOUS ANSWERS FROM THIS GAME:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${qaSummary}
 
-            const fallbackMessages = [
-                {
-                    role: "system",
-                    content: `You are Avdhez the Jinn. Your hypothesis is "${parsed.hypothesis || parsed.finalAnswer}" but confidence is only ${confidence}%.
-Ask ONE indirect yes/no question about a SPECIFIC PROPERTY or ATTRIBUTE of this answer that will push confidence above 82%.
-Do NOT name your hypothesis in the question.
-Already asked question types: ${parsed.eliminatedCategories || "none"}.
-Reply ONLY with raw JSON: {"reasoning":"why this confirms/denies hypothesis","hypothesis":"${parsed.hypothesis || parsed.finalAnswer}","eliminatedCategories":"${parsed.eliminatedCategories || ""}","questionType":"verification","question":"your indirect property question","isGuess":false,"finalAnswer":"","confidence":${confidence}}`
-                },
+These answers are GROUND TRUTH. Every new question MUST be framed around what is already confirmed above. Never ask anything that contradicts or ignores these answers. Never re-ask something already covered.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DEDUCTION PATH — follow this order
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 1 — ENTITY TYPE (Q1-2, if not yet known):
+  Ask: Real person? / Fictional character? / Animal? / Object? / Place? / Concept?
+  → Determines which path to follow next
+
+PHASE 2A — REAL PERSON path (once confirmed real person):
+  □ Gender (male/female)
+  □ Living or deceased
+  □ Primary field: actor / musician / YouTuber/streamer / athlete / politician / scientist / business person / comedian
+  □ Nationality or region (Western/Asian/Latin American/European/Other)
+  □ Age range: under 30 / 30-50 / over 50
+  □ Fame scope: global superstar everyone knows / famous within specific community
+  □ Then verify with indirect attribute questions before guessing
+
+PHASE 2B — FICTIONAL CHARACTER path (once confirmed fictional):
+  □ Medium: movie / TV show / anime / manga / comic book / video game / book / cartoon
+  □ Genre: superhero / fantasy / sci-fi / action / horror / comedy / romance / adventure
+  □ Major franchise hint: Is it from a US production? Japanese? Other?
+  □ Character role: hero/protagonist / villain / side character
+  □ Human or non-human (robot, alien, animal, supernatural)
+  □ Then verify with specific power/trait/appearance questions before guessing
+
+PHASE 2C — OBJECT / PLACE / CONCEPT path:
+  □ Can it be held in one hand?
+  □ Is it man-made?
+  □ Does it have a specific function or purpose?
+  □ Is it found indoors?
+  □ Is it electronic or digital?
+  □ Is it something most people use daily?
+
+PHASE 3 — INDIRECT VERIFICATION (never name hypothesis):
+  Ask about properties, traits, associations:
+  ✓ "Has this person won an Oscar?" (not "Is it Leo DiCaprio?")
+  ✓ "Does this character have a sidekick?" (not "Is it Batman?")
+  ✓ "Does this person make gaming content?" (not "Is it PewDiePie?")
+  ✓ "Is this character known for a specific weapon or power?"
+
+PHASE 4 — GUESS (confidence >= 80):
+  Set isGuess:true, finalAnswer to specific name, question to "Is it [finalAnswer]?"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRICT RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Every question must BUILD ON previous answers — frame it using confirmed facts
+2. Never ask the same TYPE of question twice (gender asked → never ask gender again)
+3. Never ask "Is it X or Y?" — one subject per question only
+4. Never reveal hypothesis in the question before final guess
+5. Never repeat any question already in the conversation
+6. Binary halving: each question should eliminate ~50% of remaining possibilities
+7. finalAnswer must be a specific real name — never vague like "a famous actor"
+8. Low-information questions are forbidden (questions where Yes and No both give little new data)
+
+${phaseNote}`;
+
+    // ── MAIN RETRY LOOP ──
+    let lastError = null;
+
+    for (let i = 0; i < keyArray.length; i++) {
+        try {
+            const groq = new Groq({ apiKey: keyArray[i] });
+
+            const firstHint = isFirstMove
+                ? `\n\nOPENING HINT: ${FIRST_QUESTION_HINTS[Math.floor(Math.random() * FIRST_QUESTION_HINTS.length)]}`
+                : "";
+
+            const messages = [
+                { role: "system", content: systemPrompt + firstHint },
                 ...safeHistory,
-                { role: "user", content: userInput || "continue" }
+                { role: "user", content: userInput || "Let's start!" }
             ];
 
-            try {
-                const fallbackRaw = await callGroq(keyArray, fallbackMessages, 0.2);
-                const fallback = parseJSON(fallbackRaw);
-                return res.status(200).json({ question: fallback.question, isGuess: false, finalAnswer: "" });
-            } catch {
-                return res.status(200).json({ question: parsed.question, isGuess: false, finalAnswer: "" });
+            const completion = await withTimeout(
+                groq.chat.completions.create({
+                    model: "llama-3.3-70b-versatile",
+                    messages,
+                    temperature: 0.3,
+                    max_tokens: 900,
+                }),
+                14000
+            );
+
+            const responseText = completion.choices[0]?.message?.content || "";
+            const parsed = parseJSON(responseText);
+            const confidence = parsed.confidence || 0;
+
+            console.log(`Q${questionCount + 1} | hypothesis:"${parsed.hypothesis}" | confidence:${confidence}%`);
+
+            // Block premature guesses
+            if (parsed.isGuess && confidence < 80) {
+                console.log(`Guess blocked — confidence ${confidence}% < 80%. Requesting one more verification question.`);
+
+                const verifyMessages = [
+                    {
+                        role: "system",
+                        content: `You are Avdhez the Jinn. Your current hypothesis is "${parsed.hypothesis || parsed.finalAnswer}" with ${confidence}% confidence — not enough to guess yet (need 80%).
+
+Previous answers so far:
+${qaSummary}
+
+Ask ONE indirect yes/no question about a specific PROPERTY or ATTRIBUTE of "${parsed.hypothesis || parsed.finalAnswer}" that will push confidence above 80%. Do NOT name your hypothesis in the question.
+
+Reply ONLY with raw JSON:
+{"reasoning":"why this question confirms the hypothesis","hypothesis":"${parsed.hypothesis || parsed.finalAnswer}","question":"your indirect property question here","isGuess":false,"finalAnswer":"","confidence":${confidence}}`
+                    },
+                    ...safeHistory,
+                    { role: "user", content: userInput || "continue" }
+                ];
+
+                try {
+                    const verifyCompletion = await withTimeout(
+                        groq.chat.completions.create({
+                            model: "llama-3.3-70b-versatile",
+                            messages: verifyMessages,
+                            temperature: 0.2,
+                            max_tokens: 400,
+                        }),
+                        12000
+                    );
+                    const verifyParsed = parseJSON(verifyCompletion.choices[0]?.message?.content || "");
+                    return res.status(200).json({ question: verifyParsed.question, isGuess: false, finalAnswer: "" });
+                } catch {
+                    return res.status(200).json({ question: parsed.question, isGuess: false, finalAnswer: "" });
+                }
             }
-        }
 
-        return res.status(200).json({
-            question: parsed.question,
-            isGuess: parsed.isGuess || false,
-            finalAnswer: parsed.finalAnswer || ""
-        });
+            return res.status(200).json({
+                question: parsed.question,
+                isGuess: parsed.isGuess || false,
+                finalAnswer: parsed.finalAnswer || ""
+            });
 
-    } catch (error) {
-        const msg = (error.message || "").toLowerCase();
-        console.error("Handler error:", error.message);
+        } catch (error) {
+            const msg = (error.message || "").toLowerCase();
+            const status = error.status || error.statusCode;
+            lastError = error;
 
-        if (msg.includes("format scrambled") || msg.includes("unexpected token")) {
-            return res.status(200).json({ question: "The vision blurred — click your answer again.", isGuess: false, isRateLimit: true });
+            console.error(`Key${i + 1}/${keyArray.length} — ${status} | ${error.message}`);
+
+            if (
+                msg.includes('timeout') ||
+                status === 429 || msg.includes("429") || msg.includes("quota") || msg.includes("rate limit") ||
+                status === 401 || msg.includes("invalid api key") || msg.includes("unauthorized") || msg.includes("expired")
+            ) continue;
+
+            if (msg.includes("format scrambled") || msg.includes("unexpected token")) {
+                return res.status(200).json({ question: "The vision blurred — click your answer again.", isGuess: false, isRateLimit: true });
+            }
+
+            return res.status(200).json({ question: `SERVER ERROR: ${error.message}`, isGuess: false });
         }
-        if (msg.includes("all keys exhausted") || msg.includes("timeout")) {
-            return res.status(200).json({ question: "The Jinn needs a moment to recover. Please try again.", isGuess: false, isRateLimit: true });
-        }
-        return res.status(200).json({ question: `SERVER ERROR: ${error.message}`, isGuess: false });
     }
+
+    return res.status(200).json({
+        question: "The Jinn needs a moment to recover. Please try again.",
+        isGuess: false,
+        isRateLimit: true
+    });
 };
