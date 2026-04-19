@@ -1,72 +1,103 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Groq = require("groq-sdk");
 
 module.exports = async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
-    const keysString = process.env.GEMINI_API_KEYS;
+    const keysString = process.env.GROQ_API_KEYS;
     if (!keysString) {
-        return res.status(200).json({ question: "SYSTEM ERROR: Missing GEMINI_API_KEYS.", isGuess: false });
+        return res.status(200).json({ question: "SYSTEM ERROR: Missing GROQ_API_KEYS.", isGuess: false });
     }
 
     let keyArray = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0);
     keyArray = keyArray.sort(() => 0.5 - Math.random());
 
     const { history, userInput, isCorrection, correctThing } = req.body;
-    const safeHistory = history ? history.map(h => ({ role: h.role, parts: [{ text: h.text }] })) : [];
+
+    const safeHistory = history ? history.map(h => ({
+        role: h.role === "model" ? "assistant" : "user",
+        content: h.text
+    })) : [];
+
+    const systemPrompt = `You are 'The Mystic Node', an Akinator-style mind-reading bot. You must figure out what the user is thinking of.
+CRITICAL RULES:
+1. You MUST phrase your question so it can ONLY be answered with "Yes", "No", "Maybe", or "Don't know".
+2. NEVER ask "A or B" questions. Instead ask one yes/no question at a time.
+3. DO NOT GUESS IMMEDIATELY. Ask strategic broad questions first.
+4. You MUST respond ONLY with a raw JSON object. No markdown, no code blocks, no explanation.
+5. Format: {"question": "Your yes/no question here", "isGuess": false, "finalAnswer": ""}
+6. ONLY set "isGuess" to true when highly confident. Put your guess in "finalAnswer".`;
+
+    let lastError = null;
 
     for (let i = 0; i < keyArray.length; i++) {
         const currentKey = keyArray[i];
 
         try {
-            const genAI = new GoogleGenerativeAI(currentKey);
+            const groq = new Groq({ apiKey: currentKey });
 
-            const model = genAI.getGenerativeModel({
-                model: "gemini-1.5-flash",
-                systemInstruction: `
-                    You are 'The Mystic Node', an Akinator-style mind-reading bot. You must figure out what the user is thinking of.
-                    CRITICAL RULES:
-                    1. You MUST phrase your question so it can ONLY be answered with "Yes", "No", "Maybe", or "Don't know".
-                    2. NEVER ask "A or B" questions. (e.g., NEVER ask "Is it real or fictional?". Instead ask "Is it a real person?").
-                    3. DO NOT GUESS IMMEDIATELY. Ask strategic, broad questions first to gather clues.
-                    4. Respond ONLY in strict JSON format: {"question": "Your exact yes/no question", "isGuess": false, "finalAnswer": ""}
-                    5. ONLY set "isGuess" to true if you are highly confident based on clues. If true, put your guess in "finalAnswer".
-                    6. Absolutely NO conversational filler. ONLY output the JSON object.
-                `
-            });
+            let messages;
 
             if (isCorrection) {
-                const learningPrompt = `I was thinking of "${correctThing}". Review our history: ${JSON.stringify(safeHistory)}. Learn from your mistake. Reply with strict JSON: {"question": "Got it! I will remember that. Let's play again!", "isGuess": false, "finalAnswer": ""}`;
-                await model.generateContent(learningPrompt);
+                messages = [
+                    { role: "system", content: systemPrompt },
+                    ...safeHistory,
+                    { role: "user", content: `I was thinking of "${correctThing}". Learn from this. Respond with JSON only: {"question": "Got it! Let's play again!", "isGuess": false, "finalAnswer": ""}` }
+                ];
+            } else {
+                messages = [
+                    { role: "system", content: systemPrompt },
+                    ...safeHistory,
+                    { role: "user", content: userInput || "Let's start!" }
+                ];
+            }
+
+            const completion = await groq.chat.completions.create({
+                model: "llama-3.1-8b-instant",
+                messages,
+                temperature: 0.7,
+                max_tokens: 200,
+                response_format: { type: "json_object" }, // forces valid JSON every time
+            });
+
+            const responseText = completion.choices[0]?.message?.content || "";
+
+            if (isCorrection) {
                 return res.status(200).json({ reset: true });
             }
 
-            const chat = model.startChat({ history: safeHistory });
-            const result = await chat.sendMessage(userInput || "Let's start!");
-            let responseText = result.response.text();
+            // Strip markdown fences if model ignores response_format
+            const cleaned = responseText
+                .replace(/```json/gi, '')
+                .replace(/```/g, '')
+                .trim();
 
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) throw new Error("Format Scrambled");
+            const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error("Format Scrambled: " + responseText);
 
-            return res.status(200).json(JSON.parse(jsonMatch[0].trim()));
+            const parsed = JSON.parse(jsonMatch[0].trim());
+
+            // Ensure required fields exist
+            if (!parsed.question) throw new Error("Format Scrambled: missing question field");
+
+            return res.status(200).json({
+                question: parsed.question,
+                isGuess: parsed.isGuess || false,
+                finalAnswer: parsed.finalAnswer || ""
+            });
 
         } catch (error) {
             const msg = (error.message || "").toLowerCase();
-            const status = error.status || error.code;
+            const status = error.status || error.statusCode || error.code;
 
-            // Log the real error so you can see it in Vercel logs
-            console.error(`Key ${i + 1}/${keyArray.length} failed — status: ${status} | message: ${error.message}`);
+            lastError = `Key${i + 1} | status:${status} | ${error.message}`;
+            console.error(lastError);
 
-            // ONLY skip to next key for rate limits
             if (status === 429 || msg.includes("429") || msg.includes("quota") || msg.includes("rate limit")) {
                 continue;
             }
-
-            // ONLY skip to next key for dead/invalid keys
-            if (msg.includes("api_key_invalid") || msg.includes("invalid api key") || msg.includes("expired")) {
+            if (status === 401 || msg.includes("invalid api key") || msg.includes("unauthorized") || msg.includes("expired")) {
                 continue;
             }
-
-            // Scrambled JSON — ask user to click again, no key switch needed
             if (msg.includes("format scrambled") || msg.includes("unexpected token")) {
                 return res.status(200).json({
                     question: "The magic got scrambled. Can you click your answer again?",
@@ -75,7 +106,6 @@ module.exports = async function handler(req, res) {
                 });
             }
 
-            // Everything else (model not found, network error, etc.) = stop and show the real error
             return res.status(200).json({ question: `SERVER ERROR: ${error.message}`, isGuess: false });
         }
     }
