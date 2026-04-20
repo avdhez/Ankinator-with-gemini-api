@@ -1,14 +1,5 @@
 const Groq = require("groq-sdk");
 
-const FIRST_QUESTION_HINTS = [
-    "real-or-fictional",
-    "living-thing",
-    "human-being",
-    "entertainment-related",
-    "physically-touchable",
-    "globally-famous",
-];
-
 function withTimeout(promise, ms) {
     return Promise.race([
         promise,
@@ -25,157 +16,122 @@ function parseJSON(text) {
     return parsed;
 }
 
-// ─────────────────────────────────────────────────────────────
-//  BUILD COMPACT PROFILE STRING FROM HISTORY
-//  YES answers → confirmed traits  (most valuable)
-//  NO answers  → eliminated traits (grouped compactly)
-//  MAYBE/DK    → uncertain traits  (noted but not relied on)
-//
-//  Example output:
-//  CONFIRMED: real-person, male, entertainer, western, young
-//  ELIMINATED: fictional, female, athlete, politician, asian
-//  UNCERTAIN: comedian
-// ─────────────────────────────────────────────────────────────
-function buildProfileString(history) {
+// Compress each Q&A pair into a tiny semantic token
+// e.g. "Is it a real person?" + "Yes" → "real-person:y"
+function buildProfile(history) {
     if (!history || history.length < 2) return "";
 
-    const confirmed  = [];   // YES answers — build on these
-    const eliminated = [];   // NO answers  — never revisit
-    const uncertain  = [];   // MAYBE / DON'T KNOW
+    const tokens = [];
 
-    // history alternates: [user-answer, model-response, user-answer, model-response, ...]
-    // user answers come first (even index), model questions come from model responses
     for (let i = 0; i + 1 < history.length; i += 2) {
         const userTurn  = history[i];
         const modelTurn = history[i + 1];
-
         const answer = (userTurn?.text || "").trim().toLowerCase();
         let question = "";
         try {
-            const mData = JSON.parse(modelTurn?.text || "{}");
-            question = (mData.question || "").trim();
+            question = JSON.parse(modelTurn?.text || "{}").question || "";
         } catch {
-            question = (modelTurn?.text || "").trim();
+            question = modelTurn?.text || "";
         }
-
         if (!question) continue;
 
-        // Extract a compact 1-4 word tag from the question
-        const tag = compressQuestion(question);
+        const tag = tagQuestion(question);
         if (!tag) continue;
 
-        if (answer === "yes") {
-            confirmed.push(tag);
-        } else if (answer === "no") {
-            eliminated.push(tag);
-        } else if (answer === "maybe" || answer.includes("don") || answer.includes("know")) {
-            uncertain.push(tag);
-        }
+        const flag = answer === "yes" ? "y"
+                   : answer === "no"  ? "n"
+                   : "?";
+
+        tokens.push(`${tag}:${flag}`);
     }
 
-    const parts = [];
-    if (confirmed.length)  parts.push(`YES[${confirmed.join(",")}]`);
-    if (eliminated.length) parts.push(`NO[${eliminated.join(",")}]`);
-    if (uncertain.length)  parts.push(`MAYBE[${uncertain.join(",")}]`);
-
-    return parts.join(" | ");
+    return tokens.join(" ");
 }
 
-// Compress a full question into a short semantic tag
-// "Is it a real person?" → "real-person"
-// "Is this person male?" → "male"
-// "Is it related to sports?" → "sports"
-function compressQuestion(q) {
-    q = q.toLowerCase().replace(/[?'"]/g, "").trim();
+function tagQuestion(q) {
+    q = q.toLowerCase().replace(/[?!'"]/g, "").trim();
 
-    const rules = [
-        // Entity type
-        [/real person|actual person/,           "real-person"],
-        [/fictional|imaginary|made.?up/,        "fictional"],
-        [/living (thing|creature|being)/,       "living-thing"],
-        [/physically exist|real world/,         "physical"],
-        [/human being|is (it|this) a human/,   "human"],
-        [/animal/,                              "animal"],
-        [/place|location|country|city/,         "place"],
-        [/object|thing you (can|could) (hold|touch|use)/, "object"],
-        [/concept|idea|abstract/,               "concept"],
-        // Person attributes
-        [/male|man|boy|he\b/,                   "male"],
-        [/female|woman|girl|she\b/,             "female"],
-        [/alive|living person|still alive/,     "alive"],
-        [/dead|deceased|passed away/,           "deceased"],
-        // Fields
-        [/actor|actress|acting|film|movie/,     "actor"],
-        [/musician|singer|music|band/,          "musician"],
-        [/youtube|content creator|streamer/,    "youtuber"],
-        [/athlete|sport|football|basketball|soccer|cricket/, "athlete"],
-        [/politician|president|prime minister/, "politician"],
-        [/comedian|comedy/,                     "comedian"],
-        [/scientist|researcher/,                "scientist"],
-        [/business|ceo|entrepreneur/,           "business"],
-        [/influencer/,                          "influencer"],
-        // Nationality / region
-        [/american|united states|us\b/,         "american"],
-        [/british|uk\b|england/,               "british"],
-        [/indian\b/,                            "indian"],
-        [/asian\b/,                             "asian"],
-        [/european\b/,                          "european"],
-        [/western\b/,                           "western"],
-        [/latin|spanish|hispanic/,              "latin"],
-        // Age / era
-        [/under 30|young|20s/,                  "young"],
-        [/30.?50|middle.?aged/,                 "middle-aged"],
-        [/over 50|older|senior/,               "older"],
-        [/historical|19th|18th|century/,        "historical"],
-        // Fame
-        [/globally famous|everyone knows|worldwide/, "global-fame"],
-        [/niche|specific community|not mainstream/,  "niche-fame"],
-        // Fictional medium
-        [/anime\b/,                             "anime"],
-        [/manga\b/,                             "manga"],
-        [/comic book|dc|marvel/,               "comic"],
-        [/cartoon\b/,                           "cartoon"],
-        [/video game|game character/,           "video-game"],
-        [/movie character|film character/,      "movie-char"],
-        [/tv show|television|series/,           "tv-char"],
-        [/book|novel|literature/,               "book-char"],
-        // Character traits
-        [/superhero|super power|powers/,        "superhero"],
-        [/villain|antagonist/,                  "villain"],
-        [/protagonist|main character|hero/,     "protagonist"],
-        [/sidekick|supporting/,                 "sidekick"],
-        [/real|physically real/,                "real"],
-        [/supernatural|magic|wizard/,           "supernatural"],
-        [/robot|ai character|android/,          "robot"],
-        [/alien\b/,                             "alien"],
-        // Physical / size
-        [/bigger than a car|large|huge/,        "large"],
-        [/smaller than|tiny|small/,             "small"],
-        [/hold in (your|one) hand/,             "handheld"],
-        [/indoors|inside (a )?home/,            "indoor"],
-        [/outdoors|outside|nature/,             "outdoor"],
-        [/electronic|digital/,                  "electronic"],
-        [/man.?made|manufactured/,              "man-made"],
-        [/natural\b/,                           "natural"],
-        // Entertainment
-        [/entertainment|show business/,         "entertainer"],
-        [/oscar|emmy|grammy|award/,             "award-winner"],
-        [/gaming|gamer|plays games/,            "gaming-content"],
-        [/comedy content|funny video/,          "comedy-content"],
-        [/educational/,                         "educational-content"],
+    const map = [
+        [/real.?person|actual person/,              "real-person"],
+        [/fictional|imaginary|made.?up/,            "fictional"],
+        [/living (thing|creature|being|organism)/,  "living-thing"],
+        [/human being|is.*(it|this) a human/,       "human"],
+        [/animal\b/,                                "animal"],
+        [/place|location|city|country/,             "place"],
+        [/concept|idea|abstract/,                   "concept"],
+        [/object|thing you (hold|touch|use)/,       "object"],
+        [/\bmale\b|is (it|this) a man\b|boy\b/,     "male"],
+        [/\bfemale\b|woman\b|girl\b/,               "female"],
+        [/still alive|currently alive/,             "alive"],
+        [/dead|deceased|passed away/,               "deceased"],
+        [/actor|actress|film|movie star/,           "actor"],
+        [/musician|singer|rapper|music\b/,          "musician"],
+        [/youtube|content.?creator|streamer/,       "youtuber"],
+        [/athlete|sport|football|cricket|basketball|soccer/, "athlete"],
+        [/politician|president|prime minister/,     "politician"],
+        [/comedian|stand.?up/,                      "comedian"],
+        [/scientist|researcher|inventor/,           "scientist"],
+        [/business|ceo|entrepreneur/,               "business"],
+        [/american|united states|\bus\b/,           "american"],
+        [/british|england|\buk\b/,                  "british"],
+        [/\bindian\b/,                              "indian"],
+        [/\basian\b/,                               "asian"],
+        [/\beuropean\b/,                            "european"],
+        [/western\b/,                               "western"],
+        [/latin|spanish|hispanic/,                  "latin"],
+        [/under 30|in (their )?20s/,                "under30"],
+        [/30.?50|middle.?aged/,                     "mid-age"],
+        [/over 50|older|senior/,                    "older"],
+        [/globally famous|everyone knows|worldwide known/, "global-fame"],
+        [/niche|specific community/,                "niche-fame"],
+        [/\banime\b/,                               "anime"],
+        [/\bmanga\b/,                               "manga"],
+        [/comic book|superhero comic/,              "comic"],
+        [/\bcartoon\b/,                             "cartoon"],
+        [/video game|game character/,               "game-char"],
+        [/movie character|from a (film|movie)/,     "movie-char"],
+        [/tv show|television series/,               "tv-char"],
+        [/book character|from a (book|novel)/,      "book-char"],
+        [/\bsuperhero\b|super power/,               "superhero"],
+        [/\bvillain\b|antagonist/,                  "villain"],
+        [/protagonist|main character|the hero/,     "protagonist"],
+        [/supernatural|magic|wizard|sorcerer/,      "supernatural"],
+        [/\brobot\b|\bandroid\b/,                   "robot"],
+        [/\balien\b/,                               "alien"],
+        [/award|oscar|grammy|emmy/,                 "award-winner"],
+        [/gaming content|plays games/,              "gaming-content"],
+        [/100 million|most subscribed/,             "mega-subscriber"],
+        [/signature (weapon|power|ability)/,        "signature-trait"],
+        [/wears a (mask|cape|suit)/,                "costume"],
+        [/red (color|suit|costume)/,                "red-theme"],
+        [/blonde|brunette|bald|hair/,               "appearance"],
+        [/under 40|young (person|adult)/,           "young"],
+        [/\bdead\b|\bdied\b/,                       "deceased"],
+        [/partnered|collaborated|works with/,       "collaborator"],
+        [/released (a )?song|album|single/,         "has-music"],
+        [/appeared in|starred in/,                  "has-appearance"],
+        [/known for|famous for/,                    "known-trait"],
+        [/bigger than a car|very large/,            "large"],
+        [/hold in (your|one) hand/,                 "handheld"],
+        [/found indoors|inside (a )?home/,          "indoor"],
+        [/electronic|digital/,                      "electronic"],
+        [/man.?made|manufactured/,                  "man-made"],
+        [/\bnatural\b/,                             "natural"],
     ];
 
-    for (const [pattern, tag] of rules) {
+    for (const [pattern, tag] of map) {
         if (pattern.test(q)) return tag;
     }
 
-    // Fallback: extract key noun (2-3 words max)
-    const words = q.replace(/^(is it|does this|is this|has this|can this|was this|did this|do they|are they)\s*/i, "")
-                   .split(/\s+/).slice(0, 3).join("-");
-    return words.length > 2 ? words : "";
+    // Generic fallback: take first 2-3 meaningful words
+    const words = q
+        .replace(/^(is it|does this|is this|has this|can this|was this|did this|do they|are they|would this)\s*/i, "")
+        .split(/\s+/)
+        .slice(0, 3)
+        .join("-");
+    return words.length > 3 ? words : null;
 }
 
-// ─────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
@@ -194,7 +150,6 @@ module.exports = async function handler(req, res) {
         content: h.text
     })) : [];
 
-    // ── CORRECTION MODE ──
     if (isCorrection) {
         for (let i = 0; i < keyArray.length; i++) {
             try {
@@ -202,7 +157,7 @@ module.exports = async function handler(req, res) {
                 await withTimeout(groq.chat.completions.create({
                     model: "llama-3.3-70b-versatile",
                     messages: [
-                        { role: "system", content: `Reply ONLY with this JSON: {"reasoning":"Noted.","hypothesis":"","question":"The Jinn learns from every defeat. Let us play again!","isGuess":false,"finalAnswer":"","confidence":0}` },
+                        { role: "system", content: `Reply ONLY with this JSON: {"reasoning":"Noted.","hypothesis":"","question":"The Jinn learns from every defeat. Shall we play again?","isGuess":false,"finalAnswer":"","confidence":0}` },
                         { role: "user", content: `Answer was "${correctThing}".` }
                     ],
                     temperature: 0.1, max_tokens: 80,
@@ -213,76 +168,46 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ reset: true });
     }
 
-    // ── BUILD COMPACT PROFILE STRING ──
-    const profile = buildProfileString(history || []);
+    const profile = buildProfile(history || []);
 
-    // ── PHASE ──
-    let phase = "";
-    if (qCount >= 18)      phase = `FORCE-GUESS now. ${qCount} questions used. Set isGuess:true immediately.`;
-    else if (qCount >= 11) phase = `COMMIT: ${qCount}q used. confidence>=80→guess. Else one sharp question only.`;
-    else if (qCount >= 6)  phase = `VERIFY: ${qCount}q used. Confirm hypothesis via indirect attributes. Guess if confidence>=80.`;
-    else if (qCount >= 3)  phase = `NARROW: ${qCount}q used. Sub-category/field/region drill. Build on confirmed traits.`;
-    else                   phase = `EXPLORE: ${qCount}q used. Determine entity type. Binary halving only.`;
+    const systemPrompt = `You are Avdhez the Jinn — a mind reader who figures out what someone is thinking through intelligent deduction. You are playing a guessing game right now.
 
-    const systemPrompt = `You are Avdhez the Jinn — the world's greatest mind reader. You deduce what someone is thinking by asking precise questions, then guessing correctly. You specialise in: real famous people (actors, YouTubers, musicians, athletes, streamers, politicians), fictional characters (anime, superheroes, cartoons, comics, video games), animals, objects, places, and concepts.
+PROFILE STRING — everything confirmed so far this game:
+"${profile || "empty — no answers yet"}"
 
-OUTPUT: Raw JSON only — nothing before or after, no markdown:
+Format: tag:y means YES (confirmed), tag:n means NO (eliminated), tag:? means MAYBE.
+Examples: real-person:y male:y youtuber:y american:y alive:y athlete:n politician:n
+
+YOUR TASK EACH TURN:
+Read the profile. Reason from it. Ask the single best next question.
+
+OUTPUT — raw JSON only, nothing else:
 {"reasoning":"...","hypothesis":"...","question":"...","isGuess":false,"finalAnswer":"","confidence":0}
 
-━━━ PROFILE STRING (compact summary of ALL prior answers) ━━━
-${profile || "No answers yet — first question."}
+HOW TO REASON (write this in "reasoning"):
+- Read every tag:y — these are confirmed facts. Build a mental picture.
+- Read every tag:n — these are eliminated. Never go near these again.
+- From confirmed facts, what is the most probable answer right now? Name it.
+- What is the single most important thing you still don't know that would confirm or deny your hypothesis?
+- What one question resolves that gap — and also helps if the answer is No?
 
-This profile is your deduction foundation. Every YES tag is a confirmed trait. Every NO tag is eliminated. MAYBE tags are uncertain. Your next question MUST logically extend from the YES tags — never re-ask anything already in the profile.
+HOW TO PICK THE NEXT QUESTION:
+- It must be something NOT already in the profile string.
+- It must follow logically from what tag:y facts have told you.
+- It should split remaining possibilities roughly in half.
+- It must NOT name your hypothesis — ask about a property or attribute instead.
+- It must be answerable with Yes / No / Maybe / Don't Know.
 
-━━━ REASONING PROCESS (do this every turn) ━━━
-In "reasoning" field, write:
-  1. WHAT I KNOW: List every YES tag and what it means for my hypothesis
-  2. WHAT'S RULED OUT: List every NO tag and what category it eliminates
-  3. HYPOTHESES: Your top 2-3 specific guesses with % probability each, justified by YES tags
-  4. GAP ANALYSIS: What single unknown would most help distinguish between hypotheses?
-  5. CHOSEN QUESTION: Why this question gives maximum information given the gap
+HOW TO GUESS:
+- When confidence >= 80: set isGuess true, put the specific name in finalAnswer, set question to "Is it [finalAnswer]?"
+- finalAnswer must be a real specific name: "MrBeast", "Spider-Man", "Eiffel Tower". Never vague.
 
-━━━ DECISION TREE ━━━
-
-IF no entity type confirmed yet:
-  → Ask: real person / fictional character / animal / object / place / concept?
-
-IF real-person confirmed:
-  → Unknown gender?     Ask gender
-  → Unknown alive/dead? Ask alive
-  → Unknown field?      Ask field (actor / musician / youtuber / athlete / politician / comedian / business)
-  → Unknown region?     Ask nationality region (western / asian / latin / european)
-  → Unknown age?        Ask age range (under 35 / 35-55 / over 55)
-  → Unknown fame scope? Ask global-fame vs niche
-  → All above known?    Verify with 1-2 indirect attribute questions, then GUESS
-
-IF fictional confirmed:
-  → Unknown medium?     Ask medium (anime / comic / movie / tv / game / cartoon / book)
-  → Unknown genre?      Ask genre (superhero / fantasy / sci-fi / action / comedy)
-  → Unknown origin?     Ask origin (Japanese / American / other)
-  → Unknown role?       Ask protagonist / villain / side-character
-  → Unknown powers?     Ask specific ability/trait
-  → All above known?    Verify with 1-2 indirect questions, then GUESS
-
-━━━ INDIRECT VERIFICATION (before guessing) ━━━
-Confirm hypothesis through PROPERTIES — NEVER name it until final guess:
-  ✓ "Has this person appeared in a superhero franchise?" (not "Is it Robert Downey Jr?")
-  ✓ "Does this character use a weapon as their signature?" (not "Is it Naruto?")
-  ✓ "Does this person have over 100 million subscribers?" (not "Is it MrBeast?")
-  ✓ "Is this character primarily associated with a red color scheme?" (not "Is it Spider-Man?")
-
-━━━ GUESSING ━━━
-When confidence >= 80: set isGuess:true, finalAnswer to specific name, question to "Is it [finalAnswer]?"
-finalAnswer must be specific: "MrBeast" / "Naruto" / "Eiffel Tower" — never vague.
-
-━━━ STRICT RULES ━━━
-1. Never ask a question whose tag already exists in the profile string
-2. Never ask "Is it X or Y?" — one subject per question only
-3. Never name hypothesis in question before final guess
-4. Each question must eliminate ~50% of remaining possibilities
-5. Build every question from the YES tags in the profile — they are your clues
-
-PHASE: ${phase}`;
+RULES:
+- Never repeat a question type already in the profile.
+- Never ask "Is it X or Y?" — one subject only.
+- Never reveal hypothesis in the question before the final guess.
+- The question must feel like it naturally follows from what has already been established.
+- Questions ${qCount === 0 ? "1–3: establish broad entity type" : qCount <= 5 ? "4–6: drill sub-category and key attributes" : qCount <= 10 ? "7–11: verify hypothesis indirectly" : "12+: commit to guess or final verification"}.`;
 
     let lastError = null;
 
@@ -290,12 +215,8 @@ PHASE: ${phase}`;
         try {
             const groq = new Groq({ apiKey: keyArray[i] });
 
-            const openingHint = isFirstMove
-                ? `\nOPENING: ${FIRST_QUESTION_HINTS[Math.floor(Math.random() * FIRST_QUESTION_HINTS.length)]}`
-                : "";
-
             const messages = [
-                { role: "system", content: systemPrompt + openingHint },
+                { role: "system", content: systemPrompt },
                 ...safeHistory,
                 { role: "user", content: userInput || "Let's start!" }
             ];
@@ -305,7 +226,7 @@ PHASE: ${phase}`;
                     model: "llama-3.3-70b-versatile",
                     messages,
                     temperature: 0.25,
-                    max_tokens: 850,
+                    max_tokens: 750,
                 }),
                 14000
             );
@@ -314,18 +235,16 @@ PHASE: ${phase}`;
             const parsed = parseJSON(raw);
             const confidence = parsed.confidence || 0;
 
-            console.log(`Q${qCount+1} | profile:"${profile}" | hypothesis:"${parsed.hypothesis}" | conf:${confidence}%`);
+            console.log(`Q${qCount+1} | profile: "${profile}" | hypothesis: "${parsed.hypothesis}" | conf: ${confidence}%`);
 
-            // Block low-confidence guesses — ask one more verification question
             if (parsed.isGuess && confidence < 80) {
-                console.log(`Guess blocked (${confidence}%). Requesting verification.`);
-                const verifyMsg = [
+                console.log(`Guess blocked (${confidence}%). Asking one more verification.`);
+                const verifyMessages = [
                     {
                         role: "system",
-                        content: `You are Avdhez the Jinn. Hypothesis: "${parsed.hypothesis || parsed.finalAnswer}", confidence: ${confidence}% (need 80%).
-Profile so far: ${profile}
-Ask ONE indirect yes/no question about a specific attribute of "${parsed.hypothesis || parsed.finalAnswer}" that does NOT name it. This question must distinguish it from alternatives.
-Reply ONLY with JSON: {"reasoning":"why","hypothesis":"${parsed.hypothesis || parsed.finalAnswer}","question":"indirect question here","isGuess":false,"finalAnswer":"","confidence":${confidence}}`
+                        content: `You are Avdhez the Jinn. Profile so far: "${profile}". You think the answer is "${parsed.hypothesis || parsed.finalAnswer}" but confidence is ${confidence}% — you need 80% to guess.
+Ask exactly ONE indirect yes/no question about a specific property of "${parsed.hypothesis || parsed.finalAnswer}" that does NOT name it directly and would push your confidence above 80%.
+Reply ONLY with JSON: {"reasoning":"why this","hypothesis":"${parsed.hypothesis || parsed.finalAnswer}","question":"your question","isGuess":false,"finalAnswer":"","confidence":${confidence}}`
                     },
                     ...safeHistory,
                     { role: "user", content: userInput || "continue" }
@@ -333,9 +252,9 @@ Reply ONLY with JSON: {"reasoning":"why","hypothesis":"${parsed.hypothesis || pa
                 try {
                     const vc = await withTimeout(groq.chat.completions.create({
                         model: "llama-3.3-70b-versatile",
-                        messages: verifyMsg,
+                        messages: verifyMessages,
                         temperature: 0.2,
-                        max_tokens: 350,
+                        max_tokens: 300,
                     }), 12000);
                     const vp = parseJSON(vc.choices[0]?.message?.content || "");
                     return res.status(200).json({ question: vp.question, isGuess: false, finalAnswer: "" });
