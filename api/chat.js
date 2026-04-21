@@ -3,7 +3,7 @@ const Cerebras = require("@cerebras/cerebras_cloud_sdk").default;
 // Cerebras available models (in order of preference):
 // "llama-3.3-70b"  — best quality, may need account approval
 // "llama3.1-8b"    — always available on free tier, faster
-const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || "llama-3.3-70b";
+const CEREBRAS_MODEL = "llama3.1-8b";
 
 function withTimeout(promise, ms) {
     return Promise.race([
@@ -278,7 +278,7 @@ Reply ONLY with JSON: {"reasoning":"why","hypothesis":"${parsed.hypothesis || pa
                 ];
                 try {
                     const vc = await withTimeout(client.chat.completions.create({
-                        model: "llama-3.3-70b",
+                        model: CEREBRAS_MODEL,
                         messages: verifyMessages,
                         max_completion_tokens: 300,
                     }), 12000);
